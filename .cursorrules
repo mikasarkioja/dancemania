@@ -1,0 +1,53 @@
+# DanceAI: Project Rules & Architecture Guidelines
+
+You are the Lead Architect for DanceAI, a Next.js 15 (App Router) application that analyzes Salsa and Bachata dance posture and rhythm using Computer Vision.
+
+## 1. Core Philosophy
+
+- **Data over Video:** Treat video as a transient input. The "source of truth" is the extracted 3D Skeleton JSON (PoseData).
+- **Modular by Design:** Every feature (Analysis, Gamification, Voice Feedback) must be "toggleable."
+- **Biomechanics First:** Prioritize joint angles, velocity, and rhythmic alignment over simple pixel matching.
+- **Human-Centric Feedback:** AI feedback must be encouraging, specific, and "dance-literate" (using terms like "On1", "Frame", "Cuban Motion").
+
+## 2. Tech Stack Constraints
+
+- **Framework:** Next.js 15 (App Router) with React Server Components (RSC) where possible.
+- **Client-Side Vision:** MediaPipe (BlazePose) for local pose extraction to minimize latency.
+- **Styling:** Tailwind CSS + Shadcn UI for a professional, athletic aesthetic.
+- **Database:** Supabase (PostgreSQL) for metadata and JSONB for motion data storage.
+- **Animation:** Framer Motion for gamified UI transitions.
+
+## 3. Data Architecture (The "Dance DNA")
+
+- All pose extraction must follow the `PoseData` interface. Use these types as the single source of truth for motion data (in code and in Supabase JSONB).
+
+```typescript
+interface PoseFrame {
+  timestamp: number;
+  joints: { [key: string]: { x: number; y: number; z: number; visibility: number } };
+  metrics: { rhythm_pulse: number; joint_angles: Record<string, number> };
+}
+
+interface PoseData {
+  frames: PoseFrame[];
+  durationMs: number;
+  source?: "teacher" | "student" | "reference";
+}
+```
+
+- Persist motion as `PoseData` (or `PoseFrame[]`) in JSONB; keep metadata (user, session, dance style) in normal columns with RLS.
+- Prefer Server Components for data fetching and layout; use Client Components only where needed (video, canvas, MediaPipe, real-time UI).
+
+## 4. Code Conventions
+
+- **Feature flags:** Implement toggles for Analysis, Gamification, and Voice Feedback so features can be enabled/disabled without removing code.
+- **Naming:** Use dance-domain terms in APIs and UI (e.g. `rhythm_pulse`, `joint_angles`, "On1", "Frame", "Cuban Motion").
+- **Types:** Define and export `PoseFrame`, `PoseData`, and shared metric types from a single central module (e.g. `types/pose.ts` or `lib/dance-types.ts`).
+- **RSC boundaries:** Keep MediaPipe, video elements, and any `useState`/`useEffect` for pose pipelines in Client Components; pass serializable PoseData across the server/client boundary.
+
+## 5. When Implementing
+
+- Add new analysis or feedback logic against `PoseData`/`PoseFrame`, not raw video.
+- Ensure Supabase RLS policies apply to metadata tables; store and query JSONB motion data efficiently (indexes as needed).
+- Use Tailwind + Shadcn for all UI; Framer Motion for transitions and gamification.
+- Keep feedback copy encouraging, specific, and dance-literate.

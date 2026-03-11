@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+
+# Build and cache
+.next/
+out/
+dist/
+build/
+.turbo/
+*.tsbuildinfo
+
+# Logs and debug
+*.log
+npm-debug.log*
+
+# OS and IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*.swo
+
+# Optional: uncomment if you want to keep skills only locally
+# .agents/
