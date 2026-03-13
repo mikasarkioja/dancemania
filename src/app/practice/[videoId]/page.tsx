@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { PracticeCapture, PracticePlayer } from "@/features/practice";
-import type { MotionDNA } from "@/types/dance";
+import type { MotionDNA, DanceInstructions, MoveSegment } from "@/types/dance";
 
 export default async function PracticeVideoPage({
   params,
@@ -20,9 +20,13 @@ export default async function PracticeVideoPage({
 
   if (error || !row) notFound();
 
-  const instructions = Array.isArray(row.instructions)
-    ? (row.instructions as { startTime: number; endTime: number; pattern: string }[])
-    : [];
+  const rawInstructions = Array.isArray(row.instructions) ? row.instructions as MoveSegment[] : [];
+  const instructions: DanceInstructions = rawInstructions.map((seg) => ({
+    startTime: seg.startTime,
+    endTime: seg.endTime,
+    pattern: seg.pattern,
+    teacherInstruction: seg.teacherInstruction ?? "",
+  }));
   const motionDna = (row.motion_dna as MotionDNA | null) ?? null;
   const hasMotionData =
     motionDna?.frames && Array.isArray(motionDna.frames) && motionDna.frames.length > 0;
