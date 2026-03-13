@@ -1,17 +1,15 @@
 "use client";
 
-import {
-  useRef,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
+import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Circle, Square } from "lucide-react";
 import type { MotionDNA, PoseFrame, PoseData } from "@/types/dance";
-import { getFramesAtTime } from "@/lib/utils/motion-frame-at-time";
 import { drawSkeleton } from "@/lib/utils/skeleton-canvas";
-import { calculateSimilarity, compareStudentToTeacher, getMatchingJointKeys } from "@/engines/comparison-engine";
+import {
+  calculateSimilarity,
+  compareStudentToTeacher,
+  getMatchingJointKeys,
+} from "@/engines/comparison-engine";
 import { createClient } from "@/lib/supabase/client";
 import { generateAndSaveCoachingFeedback } from "@/app/actions/generate-coaching-feedback";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,7 +58,8 @@ export function PracticeCapture({
   const [recording, setRecording] = useState(false);
   const [countDown, setCountDown] = useState<number | null>(null);
   const [studentFrames, setStudentFrames] = useState<PoseFrame[]>([]);
-  const [currentStudentFrame, setCurrentStudentFrame] = useState<PoseFrame | null>(null);
+  const [currentStudentFrame, setCurrentStudentFrame] =
+    useState<PoseFrame | null>(null);
   const [similarity, setSimilarity] = useState(0);
   const [showSparkle, setShowSparkle] = useState(false);
   const [selectedMoveIndex, setSelectedMoveIndex] = useState(0);
@@ -69,13 +68,16 @@ export function PracticeCapture({
   const rafRef = useRef<number>(0);
   const teacherFrameRef = useRef<PoseFrame | null>(null);
 
-  const selectedSegment = instructions[selectedMoveIndex];
-  const teacherFrames = motionDna?.frames?.filter((f) => f.partner_id === 0) ?? [];
+  const teacherFrames = useMemo(
+    () => motionDna?.frames?.filter((f) => f.partner_id === 0) ?? [],
+    [motionDna?.frames]
+  );
   const teacherFrameAtTime =
     motionDna && teacherTime >= 0
       ? (() => {
           const idx = Math.floor(teacherTime * FPS);
-          const frame = teacherFrames[idx] ?? teacherFrames[teacherFrames.length - 1];
+          const frame =
+            teacherFrames[idx] ?? teacherFrames[teacherFrames.length - 1];
           return frame ?? null;
         })()
       : null;
@@ -177,7 +179,12 @@ export function PracticeCapture({
       if (!teacherFrame?.joints) return;
       const startTs = recordingStartRef.current;
       const ts = Date.now() - startTs;
-      const landmarks: { x: number; y: number; z?: number; visibility?: number }[] = Array(33)
+      const landmarks: {
+        x: number;
+        y: number;
+        z?: number;
+        visibility?: number;
+      }[] = Array(33)
         .fill(null)
         .map(() => ({ x: 0.5, y: 0.5, z: 0, visibility: 0 }));
       Object.entries(teacherFrame.joints).forEach(([key, j]) => {
@@ -246,13 +253,19 @@ export function PracticeCapture({
         durationMs: studentFrames[studentFrames.length - 1]?.timestamp ?? 0,
         source: "student",
       };
-      const comparisonResult = compareStudentToTeacher(studentMotion, teacherMotion, {
-        teacherPartnerId: 0,
-        studentPartnerId: 0,
-      });
+      const comparisonResult = compareStudentToTeacher(
+        studentMotion,
+        teacherMotion,
+        {
+          teacherPartnerId: 0,
+          studentPartnerId: 0,
+        }
+      );
       const { score, metrics } = comparisonResult;
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         const { data: sessionRow, error: insertError } = await supabase
           .from("practice_sessions")
