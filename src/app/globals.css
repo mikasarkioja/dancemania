@@ -69,3 +69,13 @@ body {
   color: hsl(240 10% 14%) !important;
   min-height: 100vh;
 }
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

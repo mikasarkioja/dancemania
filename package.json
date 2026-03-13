@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
+    "compress-videos": "node scripts/compress-dance-videos.js",
     "prepare": "husky"
   },
   "dependencies": {

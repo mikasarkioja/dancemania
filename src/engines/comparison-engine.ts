@@ -358,3 +358,26 @@ export function compareStudentToTeacher(
     },
   };
 }
+
+/** Assessment level from comparison metrics (Seedling → Blossom → Performer). */
+export type AssessmentLevel = "Seedling" | "Blossom" | "Performer";
+
+/**
+ * Derive onboarding level from comparison result.
+ * Rhythm: timing offset < 150ms → Performer.
+ * Frame stability: head/shoulder alignment (tensionAvg) > 0.8 → Blossom.
+ * Hip intention: pelvic tilt / isolation (isolationAvg) even small → Performer/Blossom.
+ */
+export function getAssessmentLevel(
+  result: ComparisonResult,
+  timingOffsetMs: number = 0
+): AssessmentLevel {
+  const { tensionAvg, isolationAvg } = result.metrics;
+  const rhythmOnBeat = timingOffsetMs < 150;
+  const frameStable = tensionAvg >= 0.8;
+  const hipIntention = isolationAvg >= 0.35;
+
+  if (rhythmOnBeat && (frameStable || hipIntention)) return "Performer";
+  if (frameStable || (hipIntention && tensionAvg >= 0.6)) return "Blossom";
+  return "Seedling";
+}
