@@ -128,6 +128,7 @@ export interface TargetRange {
 export interface BiomechanicalProfile {
   hip_tilt_max?: TargetRange;
   knee_flexion_avg?: TargetRange;
+  arm_extension_avg?: TargetRange;
   torso_isolation_index?: TargetRange;
   rhythmic_sync_offset?: TargetRange;
 }

@@ -8,7 +8,6 @@
 import type {
   PoseFrame,
   BiomechanicalProfile,
-  TargetRange,
   Joint3D,
 } from "@/types/dance";
 import { getMidHip, LEFT_HIP_KEY, RIGHT_HIP_KEY } from "./mid-hip";
@@ -460,7 +459,7 @@ export function generateMoveSignature(
     const l = f.joints[LEFT_HIP_KEY];
     const r = f.joints[RIGHT_HIP_KEY];
     if (l && r) {
-      const { verticalDelta, angleDeg } = calculatePelvicTilt(
+      const { verticalDelta } = calculatePelvicTilt(
         toPoint3D(l),
         toPoint3D(r)
       );
