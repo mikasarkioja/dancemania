@@ -4,6 +4,49 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## AI-Assisted Labeling & Move Registry (2025-01)
+
+### Database
+
+- **`dance_library.suggested_labels`** (JSONB): Scanner output – array of `{ startTime, endTime, move_id, move_name, similarity }` for Quick Approve in Admin Lab. Migration: `20250120000008_dance_library_suggested_labels.sql`.
+- **`video_moves`** admin policies: INSERT/UPDATE for authenticated users so Approve Suggestion can write. Migration: `20250120000009_video_moves_admin_policies.sql`.
+- **`move_registry.source`** (TEXT): Origin e.g. `compas3d_gold_standard` | `user_contributed`. Migration: `20250121000010_move_registry_source_and_vector_sequence.sql`.
+- **`biomechanical_profile.vector_sequence`**: Optional array of feature vectors (number[][]) for DTW / Shazam-style matching (CoMPAS3D import).
+
+### Python scripts
+
+- **`scripts/process_pending.py`**: Scanner – fetches Gold Standard moves from `move_registry`, runs `suggest_labels(motion_dna, registry_profiles)`, saves result to `dance_library.suggested_labels`. Supports `vector_sequence` (DTW) and hip_tilt/foot_velocity curves. Usage: `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python scripts/process_pending.py` or `--video-id <uuid>`.
+- **`scripts/map_compas_to_supabase.py`**: Rosetta Stone – maps CoMPAS3D (SMPL-X) .npz to move_registry: SMPL-X → MediaPipe joint names, builds `vector_sequence` and upserts with `source: compas3d_gold_standard`. Usage: `python scripts/map_compas_to_supabase.py --data-dir ./datasets/compas3d/segments`.
+- **Bachata tap detection**: `detect_bachata_tap(frames, beat_timestamps, start_time_sec, end_time_sec)` – looks for vertical (Z) hip spike on every 4th beat; when pattern matches and the best match is a Bachata move (e.g. Bachata Basic), confidence is boosted in `suggest_labels`. Uses `motion_dna.metadata.beat_timestamps` when available.
+- **`scripts/requirements.txt`**: supabase, numpy, python-dotenv.
+
+### Admin UI – Dictionary Lab & Label
+
+- **Dictionary page** (`/admin/dictionary`): Fetches `suggested_labels`, shows video + progress bar with **ghost blocks** (semi-transparent rose) and **Quick Approve Sidebar** (glassmorphism cards, Jump to / Approve / Reject, timeline strip).
+- **Label page** (`/admin/label/[id]`): Loads `suggested_labels`, passes to VideoLabeler; ghost blocks and Approve (check) commit to `video_moves` and remove from `suggested_labels` via shared **`approveSuggestion`** (later **`approveSuggestedLabel`** in features).
+- **QuickApproveCard** (`QuickApproveCard.tsx`): Move name (serif), Badge “X% Match”, timestamp link (Jump to), Reject (X), Approve (Wand2, brand-rose). Used inside QuickApproveSidebar.
+- **Server action** `approveSuggestion` in `src/app/admin/actions.ts`: inserts `video_moves`, appends segment to `instructions`, removes suggestion from `suggested_labels`.
+
+### Admin UI – Approval logic & sidebar
+
+- **`src/features/admin/actions/label-actions.ts`**: `approveSuggestedLabel(video_id, move_id, start_time, end_time)` – validates move in `move_registry`, inserts `video_moves`, removes that suggestion from `dance_library.suggested_labels`. `rejectSuggestedLabel(...)` only removes from `suggested_labels`.
+- **QuickApproveSidebar**: Vertical scroll, glassmorphism cards, confidence ring, Jump to / Approve (Sparkles) / Reject (X), timeline ghost blocks; AnimatePresence for card exit. Uses `approveSuggestedLabel` / `rejectSuggestedLabel`.
+- **LabelSwipeStack** (`LabelSwipeStack.tsx`): Swipeable card stack (Framer Motion drag). Swipe right → Approve (rose overlay), left → Reject (slate overlay). Card: 2s looping video segment + ghost skeleton overlay, move name (serif), “X% Match”, duration. Stacked cards behind; empty state “Studio Clean ✨” + “Process More Videos”.
+
+### Move Registry & CoMPAS3D
+
+- **Admin Move Registry** (`/admin/registry`): New page – **Source** filter (All | CoMPAS3D Gold Standards | User Contributed), **virtual scrolling** (@tanstack/react-virtual) for 2,000+ entries. Rows show name, category, role, source badge.
+- **MoveRegistryView** + **MoveRegistryVirtualList**: Client filter by source; virtualizer for list. Admin nav link “Move Registry →”.
+- **Types**: `SuggestedLabel`, `MoveRegistrySource`, `BiomechanicalProfile.vector_sequence`; `MoveRegistryEntry.source`.
+
+### Routes reference (updated)
+
+| Path              | Description                                 |
+| ----------------- | ------------------------------------------- |
+| `/admin/registry` | Move Registry (source filter, virtual list) |
+
+---
+
 ## Recent updates (Boutique Studio & student experience)
 
 ### Demo & navigation
@@ -63,15 +106,18 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ## Routes reference
 
-| Path | Description |
-|------|-------------|
-| `/` | Home (See demo, Library, Encyclopedia, Practice, Admin) |
-| `/demo` | Capability overview |
-| `/dashboard` | Student dashboard (auth required) |
-| `/onboarding` | Initial assessment flow (5 steps) |
-| `/library` | Browse teacher videos |
-| `/practice` | Practice hub → library |
-| `/practice/[videoId]` | PracticeCapture or PracticePlayer |
-| `/encyclopedia` | Move registry |
-| `/admin` | Admin upload & dictionary |
-| `/login` | Login (redirect target for unauthenticated dashboard) |
+| Path                  | Description                                             |
+| --------------------- | ------------------------------------------------------- |
+| `/`                   | Home (See demo, Library, Encyclopedia, Practice, Admin) |
+| `/demo`               | Capability overview                                     |
+| `/dashboard`          | Student dashboard (auth required)                       |
+| `/onboarding`         | Initial assessment flow (5 steps)                       |
+| `/library`            | Browse teacher videos                                   |
+| `/practice`           | Practice hub → library                                  |
+| `/practice/[videoId]` | PracticeCapture or PracticePlayer                       |
+| `/encyclopedia`       | Move registry                                           |
+| `/admin`              | Admin upload, dictionary, Move Registry                 |
+| `/admin/registry`     | Move Registry (source filter, virtual list)             |
+| `/admin/dictionary`   | Biomechanical dictionary (Lab) + Quick Approve Sidebar  |
+| `/admin/label/[id]`   | Label video + suggested labels (ghost blocks, Approve)  |
+| `/login`              | Login (redirect target for unauthenticated dashboard)   |
