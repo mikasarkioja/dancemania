@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fallback so body has base styling if Tailwind output is delayed or blocked */
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

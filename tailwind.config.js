@@ -1,12 +1,21 @@
+const path = require("path");
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/features/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/**/*.{js,ts,jsx,tsx,mdx}",
+    path.join(__dirname, "src/pages/**/*.{js,ts,jsx,tsx,mdx}"),
+    path.join(__dirname, "src/components/**/*.{js,ts,jsx,tsx,mdx}"),
+    path.join(__dirname, "src/features/**/*.{js,ts,jsx,tsx,mdx}"),
+    path.join(__dirname, "src/app/**/*.{js,ts,jsx,tsx,mdx}"),
+    path.join(__dirname, "src/**/*.{js,ts,jsx,tsx,mdx}"),
+  ],
+  safelist: [
+    "min-h-screen", "bg-background", "text-foreground", "antialiased",
+    "container", "mx-auto", "max-w-2xl", "px-6", "py-12", "mb-2", "mb-8",
+    "text-3xl", "font-bold", "tracking-tight", "text-muted-foreground",
+    "flex", "flex-wrap", "gap-x-4", "gap-y-1", "text-sm",
+    "text-primary", "underline", "underline-offset-4", "hover:no-underline",
   ],
   theme: {
     extend: {
