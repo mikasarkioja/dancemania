@@ -67,6 +67,10 @@ export function PracticeCapture({
   const [showSparkle, setShowSparkle] = useState(false);
   const [selectedMoveIndex, setSelectedMoveIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [lastCoachingResult, setLastCoachingResult] = useState<{
+    score: number;
+    proTips: string[];
+  } | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const teacherFrameRef = useRef<PoseFrame | null>(null);
