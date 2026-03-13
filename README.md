@@ -53,4 +53,4 @@ Optional: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for AI-generated move descript
 - `src/types` – dance.ts (PoseFrame, MoveSegment, MoveRegistryEntry, etc.)
 - `supabase/migrations` – SQL for dance_library, move_registry, video_moves, practice_sessions
 
-See `docs/ARCHITECTURE.md` for data flow and engine overview.
+See `docs/ARCHITECTURE.md` for data flow and engine overview. Recent changes: [CHANGELOG.md](CHANGELOG.md).

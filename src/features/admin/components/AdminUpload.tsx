@@ -101,7 +101,9 @@ export function AdminUpload() {
       return;
     }
     if (!trackingSeeds) {
-      setError("Please complete Partner Identification (Leader and Follower seeds).");
+      setError(
+        "Please complete Partner Identification (Leader and Follower seeds)."
+      );
       return;
     }
 
@@ -116,9 +118,13 @@ export function AdminUpload() {
         const blob = await compressVideoForUpload(videoFile, {
           onProgress: (p) => setCompressProgress(p),
         });
-        fileToUpload = new File([blob], videoFile.name.replace(/\.[^.]+$/, ".mp4"), {
-          type: "video/mp4",
-        });
+        fileToUpload = new File(
+          [blob],
+          videoFile.name.replace(/\.[^.]+$/, ".mp4"),
+          {
+            type: "video/mp4",
+          }
+        );
       }
       setCompressProgress(null);
 
@@ -138,8 +144,9 @@ export function AdminUpload() {
         data: { publicUrl },
       } = supabase.storage.from(VIDEOS_BUCKET).getPublicUrl(uploadData.path);
 
-      const { error: insertError } = await supabase.from("dance_library").insert(
-        {
+      const { error: insertError } = await supabase
+        .from("dance_library")
+        .insert({
           slug: finalSlug,
           title: title.trim(),
           genre,
@@ -148,8 +155,7 @@ export function AdminUpload() {
           bpm: bpm.trim() ? parseInt(bpm, 10) : null,
           motion_dna: null,
           tracking_seeds: trackingSeeds,
-        }
-      );
+        });
 
       if (insertError) {
         setError(insertError.message);
@@ -290,7 +296,8 @@ export function AdminUpload() {
               disabled={loading}
               className="rounded border-input"
             />
-            Compress to 720p, 30fps, H.264 before upload (client-side, may take a minute)
+            Compress to 720p, 30fps, H.264 before upload (client-side, may take
+            a minute)
           </label>
           {compressProgress != null && (
             <p className="text-xs text-muted-foreground">
@@ -324,11 +331,7 @@ export function AdminUpload() {
           </p>
         )}
 
-        <Button
-          type="submit"
-          disabled={!canSubmit}
-          className="w-full"
-        >
+        <Button type="submit" disabled={!canSubmit} className="w-full">
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
