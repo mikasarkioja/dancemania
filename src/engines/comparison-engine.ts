@@ -298,7 +298,6 @@ export function compareStudentToTeacher(
 
   const { path } = dtwAlign(studentFrames, teacherFrames);
   const n = path.length;
-  const totalCounts = Math.max(teacherFrames.length, 1);
   const tipCounts = new Map<string, { count: number; severity: number }>();
 
   let tensionSum = 0;

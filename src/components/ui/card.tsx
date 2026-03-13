@@ -20,8 +20,8 @@ Card.displayName = "Card";
 /** Card with fade-in-up on scroll (Boutique Studio global transition). */
 const AnimatedCard = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { delay?: number }
->(({ className, delay = 0, ...props }, ref) => (
+  { className?: string; delay?: number; children?: React.ReactNode }
+>(({ className, delay = 0, children }, ref) => (
   <motion.div
     ref={ref}
     initial={{ opacity: 0, y: 12 }}
@@ -32,8 +32,9 @@ const AnimatedCard = React.forwardRef<
       "rounded-lg border bg-card text-card-foreground shadow-sm",
       className
     )}
-    {...props}
-  />
+  >
+    {children}
+  </motion.div>
 ));
 AnimatedCard.displayName = "AnimatedCard";
 
