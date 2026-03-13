@@ -165,7 +165,7 @@ export function DashboardView({
                         borderRadius: 12,
                         border: "1px solid rgba(0,0,0,0.08)",
                       }}
-                      formatter={(value: number) => [`${value}%`, "Harmony"]}
+                      formatter={(value: unknown) => [value != null ? `${value}%` : "", "Harmony"]}
                     />
                     <Area
                       type="monotone"

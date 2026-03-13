@@ -17,7 +17,7 @@ import { drawSkeleton } from "@/lib/utils/skeleton-canvas";
 import { createSyntheticTeacherMotion } from "../utils/synthetic-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Sparkles, Circle, Square } from "lucide-react";
+import { Circle, Square } from "lucide-react";
 
 const FPS = 30;
 const CAPTURE_DURATION_SEC = 30;
@@ -49,7 +49,7 @@ export function AssessmentFlow({
   const [studentMotion, setStudentMotion] = useState<PoseData | null>(null);
   const [level, setLevel] = useState<AssessmentLevel | null>(null);
   const [harmonyScore, setHarmonyScore] = useState(0);
-  const [processing, setProcessing] = useState(false);
+  const [, setProcessing] = useState(false);
 
   const teacherMotion = teacherMotionProp ?? createSyntheticTeacherMotion();
   const teacherFrames = teacherMotion.frames;
