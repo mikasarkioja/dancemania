@@ -22,6 +22,8 @@ Next.js 15, React 19, TypeScript, Supabase (Postgres, RLS, JSONB), Tailwind, Fra
 3. Apply migrations: `supabase db push` or run SQL in `supabase/migrations/` in the Supabase dashboard.
 4. Run `npm run dev` and open http://localhost:3000.
 
+**Before loading your first video** (Supabase project, Storage bucket, Auth): see **[docs/SETUP.md](docs/SETUP.md)**.
+
 Optional: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for AI-generated move descriptions.
 
 ## Scripts

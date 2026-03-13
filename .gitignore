@@ -5,6 +5,7 @@ node_modules/
 .env
 .env.local
 .env.*.local
+.env_draf
 
 # Build and cache
 .next/
@@ -24,6 +25,9 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Supabase CLI local state
+supabase/.temp/
 
 # Optional: uncomment if you want to keep skills only locally
 # .agents/
