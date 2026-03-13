@@ -3,5 +3,5 @@
  * Export components and hooks used by /practice routes.
  */
 
-export { PracticeCapture } from "./practice-capture";
+export { PracticeCapture } from "./components/PracticeCapture";
 export { PracticePlayer } from "./components/PracticePlayer";

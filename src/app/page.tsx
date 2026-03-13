@@ -16,8 +16,14 @@ export default function Home() {
           </p>
           <nav className="flex flex-wrap gap-3">
             <Link
-              href="/library"
+              href="/demo"
               className="inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground shadow-sm hover:bg-primary/90 transition-colors"
+            >
+              See demo
+            </Link>
+            <Link
+              href="/library"
+              className="inline-flex items-center justify-center rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium text-foreground hover:bg-accent transition-colors"
             >
               Library
             </Link>

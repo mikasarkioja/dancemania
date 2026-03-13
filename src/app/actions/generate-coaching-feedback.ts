@@ -12,7 +12,10 @@ import {
   buildCoachingPrompt,
   parseCoachingResponse,
   type DanceGenre,
+  type CoachingFeedback,
 } from "@/engines/coaching-engine";
+
+export type { CoachingFeedback };
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -21,7 +24,7 @@ export async function generateAndSaveCoachingFeedback(
   sessionId: string,
   comparisonResult: ComparisonResult,
   genre: DanceGenre
-): Promise<void> {
+): Promise<CoachingFeedback | null> {
   const focusAreas = getCoachingFocusAreas({ comparisonResult, genre });
   const { system, user } = buildCoachingPrompt({ comparisonResult, genre });
 
@@ -107,4 +110,6 @@ export async function generateAndSaveCoachingFeedback(
     .from("practice_sessions")
     .update({ metrics: updatedMetrics })
     .eq("id", sessionId);
+
+  return feedback;
 }

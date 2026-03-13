@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 
 const navLinks = [
+  { href: "/demo", label: "Demo" },
   { href: "/library", label: "Library" },
   { href: "/encyclopedia", label: "Encyclopedia" },
   { href: "/practice", label: "Practice" },

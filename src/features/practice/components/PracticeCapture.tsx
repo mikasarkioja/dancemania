@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Circle, Square } from "lucide-react";
 import type { MotionDNA, PoseFrame, PoseData } from "@/types/dance";
@@ -12,6 +13,7 @@ import {
 } from "@/engines/comparison-engine";
 import { createClient } from "@/lib/supabase/client";
 import { generateAndSaveCoachingFeedback } from "@/app/actions/generate-coaching-feedback";
+import { CoachingCard } from "@/components/coaching/CoachingCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,6 +53,7 @@ export function PracticeCapture({
   genre = "Salsa",
   instructions = [],
 }: PracticeCaptureProps) {
+  const router = useRouter();
   const teacherVideoRef = useRef<HTMLVideoElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const webcamCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -286,12 +289,25 @@ export function PracticeCapture({
           .single();
         if (insertError) throw insertError;
         if (sessionRow?.id) {
-          await generateAndSaveCoachingFeedback(
+          const feedback = await generateAndSaveCoachingFeedback(
             sessionRow.id,
             comparisonResult,
             genre
           );
+          if (feedback) {
+            setLastCoachingResult({
+              score: Math.round(score * 100),
+              proTips: feedback.proTips,
+            });
+          }
         }
+      } else {
+        setLastCoachingResult({
+          score: Math.round(score * 100),
+          proTips: [
+            "Sign in to save your attempt and get personalized AI coaching tips.",
+          ],
+        });
       }
     } finally {
       setSaving(false);
@@ -453,6 +469,16 @@ export function PracticeCapture({
           Similarity: {Math.round(similarity * 100)}%
         </p>
       </div>
+
+      {lastCoachingResult && (
+        <CoachingCard
+          score={lastCoachingResult.score}
+          proTips={lastCoachingResult.proTips}
+          onRetry={() => setLastCoachingResult(null)}
+          onNext={() => router.push("/library")}
+          nextLabel="Back to library"
+        />
+      )}
     </div>
   );
 }
