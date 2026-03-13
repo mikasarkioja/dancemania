@@ -27,16 +27,18 @@ export default async function EncyclopediaPage() {
   }));
 
   return (
-    <main className="container py-6 md:py-8">
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <main className="container max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">Move encyclopedia</h1>
-          <p className="text-muted-foreground">
-            Browse moves by category. Each entry shows a motion signature and
-            teacher tips when available.
+          <h1 className="font-serif text-2xl font-bold text-foreground">Move encyclopedia</h1>
+          <p className="text-muted-foreground mt-1">
+            Browse moves by category. Each entry shows a motion signature and teacher tips when available.
           </p>
         </div>
-        <Link href="/" className="shrink-0 text-sm text-primary underline">
+        <Link
+          href="/"
+          className="shrink-0 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition-colors"
+        >
           ← Home
         </Link>
       </div>

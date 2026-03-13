@@ -1,4 +1,5 @@
 import * as React from "react";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 const Card = React.forwardRef<
@@ -15,6 +16,26 @@ const Card = React.forwardRef<
   />
 ));
 Card.displayName = "Card";
+
+/** Card with fade-in-up on scroll (Boutique Studio global transition). */
+const AnimatedCard = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & { delay?: number }
+>(({ className, delay = 0, ...props }, ref) => (
+  <motion.div
+    ref={ref}
+    initial={{ opacity: 0, y: 12 }}
+    whileInView={{ opacity: 1, y: 0 }}
+    viewport={{ once: true, margin: "-24px" }}
+    transition={{ duration: 0.4, ease: "easeOut", delay }}
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className
+    )}
+    {...props}
+  />
+));
+AnimatedCard.displayName = "AnimatedCard";
 
 const CardHeader = React.forwardRef<
   HTMLDivElement,
@@ -72,4 +93,4 @@ const CardFooter = React.forwardRef<
 ));
 CardFooter.displayName = "CardFooter";
 
-export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };
+export { Card, AnimatedCard, CardHeader, CardFooter, CardTitle, CardDescription, CardContent };

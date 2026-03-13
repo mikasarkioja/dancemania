@@ -1,6 +1,7 @@
 /**
  * Draw pose skeletons on a canvas from MotionDNA/PoseFrame joints.
  * Joints are assumed to be normalized 0–1 (x, y) or in same coordinate system as canvas.
+ * Optional Bloom: when jointMatches is provided, matching joints are drawn with a rose glow.
  */
 
 import type { Joint3D } from "@/types/dance";
@@ -23,14 +24,33 @@ const SKELETON_EDGES: [string, string][] = [
 
 const VISIBILITY_THRESHOLD = 0.5;
 
+const BLOOM_COLOR = "rgba(253, 164, 175, 0.9)";
+const BLOOM_GLOW = "rgba(253, 164, 175, 0.5)";
+
+export interface DrawSkeletonOptions {
+  lineWidth?: number;
+  /** Joint keys that match the reference (teacher); drawn with Bloom effect. */
+  jointMatches?: Set<string> | string[];
+  matchColor?: string;
+}
+
 export function drawSkeleton(
   ctx: CanvasRenderingContext2D,
   joints: Record<string, Joint3D>,
   width: number,
   height: number,
   color: string,
-  lineWidth: number = 2
+  lineWidth: number = 2,
+  options: DrawSkeletonOptions = {}
 ): void {
+  const { jointMatches, matchColor = BLOOM_COLOR } = options;
+  const matchSet =
+    jointMatches instanceof Set
+      ? jointMatches
+      : jointMatches
+        ? new Set(jointMatches)
+        : null;
+
   ctx.save();
   ctx.strokeStyle = color;
   ctx.lineWidth = lineWidth;
@@ -56,10 +76,25 @@ export function drawSkeleton(
     if (!j || j.visibility < VISIBILITY_THRESHOLD) continue;
     const x = j.x * width;
     const y = j.y * height;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, 4, 0, Math.PI * 2);
-    ctx.fill();
+    const isMatch = matchSet?.has(key);
+
+    if (isMatch) {
+      ctx.shadowColor = BLOOM_GLOW;
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = matchColor;
+      ctx.beginPath();
+      ctx.arc(x, y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   ctx.restore();

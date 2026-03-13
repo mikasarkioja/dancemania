@@ -2,35 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Fallback so body has base styling if Tailwind output is delayed or blocked */
-body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Boutique studio: warm rose/slate palette (matches CoachingCard) */
+    --background: 10 20% 98%;
+    --foreground: 240 10% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 10% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 240 10% 14%;
+    --primary: 346 77% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 10 15% 94%;
+    --secondary-foreground: 240 10% 14%;
+    --muted: 10 15% 94%;
+    --muted-foreground: 240 5% 46%;
+    --accent: 10 40% 96%;
+    --accent-foreground: 346 77% 40%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 10 15% 90%;
+    --input: 10 15% 90%;
+    --ring: 346 77% 50%;
+    --radius: 0.75rem;
   }
 
   .dark {
@@ -63,4 +57,15 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Critical overrides: after Tailwind so they win. Uses same palette as :root. */
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: hsl(10 20% 98%) !important;
+  color: hsl(240 10% 14%) !important;
+  min-height: 100vh;
 }
