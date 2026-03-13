@@ -274,7 +274,7 @@ function ActivityRing({ progress }: { progress: number }) {
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          transition="stroke-dashoffset 0.5s ease-out"
+          style={{ transition: "stroke-dashoffset 0.5s ease-out" }}
         />
       </svg>
     </div>
