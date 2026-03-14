@@ -1,99 +1,180 @@
-"use client";
+"use server";
 
 /**
  * Registry integration: Motion DNA → Move Registry (Gold Standard).
  *
- * This module bridges extracted Motion DNA (dance_library.motion_dna) and the
- * Move Registry. When you "Save to Registry" from the Dictionary Lab, it:
- * 1. Fetches motion_dna for the selected video/segment
- * 2. Computes the mathematical curves (signature) via computeMoveSignature
- * 3. Stores them as the Gold Standard in move_registry.biomechanical_profile
- *
- * Those curves (hip_tilt_curve, foot_velocity_curve, knee_flexion_curve) are
- * then used by the Scanner (label-actions) to compare candidate segments.
+ * Save to Registry: fetches motion_dna for the selected video/segment,
+ * slices by start/end time, computes signature via computeMoveSignature,
+ * validates the 3 critical curves, and upserts move_registry with
+ * biomechanical_profile and genre from the source video.
  */
 
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/server";
 import { computeMoveSignature } from "@/engines/signature-calculator";
-import type { BiomechanicalProfile, PoseData } from "@/types/dance";
-import { toast } from "sonner";
+import type { BiomechanicalProfile, PoseData, PoseFrame } from "@/types/dance";
+
+const MIN_FRAMES_FOR_VALID_MOVE = 10;
 
 export interface SaveToRegistryParams {
   videoId: string;
   /** Start time of segment in seconds. */
-  startTimeSec: number;
+  startTime: number;
   /** End time of segment in seconds. */
-  endTimeSec: number;
+  endTime: number;
   label: string;
   category: string;
   role?: "Leader" | "Follower" | "Both";
-  /** Optional genre (e.g. from dance_library); not stored on move_registry currently. */
-  genre?: string;
+}
+
+export type SaveToRegistryResult =
+  | { success: true }
+  | { success: false; error: string };
+
+/**
+ * Normalize timestamp to seconds (PoseData may use ms or seconds).
+ */
+function timestampToSec(ts: number): number {
+  return ts >= 1e4 ? ts / 1000 : ts;
 }
 
 /**
- * Extracts a segment of motion_dna, computes its signature with computeMoveSignature,
- * and inserts a move_registry row with BiomechanicalProfile (curves).
+ * Slice motion_dna frames to [startTime, endTime] (in seconds).
  */
-export async function saveMoveToRegistry({
-  videoId,
-  startTimeSec,
-  endTimeSec,
-  label,
-  category,
-  role = "Both",
-}: SaveToRegistryParams): Promise<{ success: boolean }> {
-  const supabase = createClient();
+function sliceFrames(
+  frames: PoseFrame[],
+  startTime: number,
+  endTime: number
+): PoseFrame[] {
+  return frames.filter((f) => {
+    const t = timestampToSec(f.timestamp);
+    return t >= startTime && t <= endTime;
+  });
+}
 
-  const { data: libraryItem, error: fetchError } = await supabase
+/**
+ * Validate that the computed signature has all 3 curves and they are non-empty.
+ */
+function validateBiomechanicalProfile(
+  profile: BiomechanicalProfile
+): { valid: true } | { valid: false; error: string } {
+  const hip = profile.hip_tilt_curve;
+  const foot = profile.foot_velocity_curve;
+  const knee = profile.knee_flexion_curve;
+
+  if (!hip || !Array.isArray(hip) || hip.length === 0) {
+    return {
+      valid: false,
+      error:
+        "Hip tilt curve is missing or empty—we need clear pelvic motion to register this move.",
+    };
+  }
+  if (!foot || !Array.isArray(foot) || foot.length === 0) {
+    return {
+      valid: false,
+      error:
+        "Foot velocity curve is missing or empty—we need detectable foot movement for the signature.",
+    };
+  }
+  if (!knee || !Array.isArray(knee) || knee.length === 0) {
+    return {
+      valid: false,
+      error:
+        "Knee flexion curve is missing or empty—we need leg geometry to complete the biomechanical profile.",
+    };
+  }
+  return { valid: true };
+}
+
+/**
+ * Server action: fetch motion_dna, slice segment, compute signature,
+ * validate curves, and upsert move_registry. Genre is inherited from the source video.
+ */
+export async function saveMoveToRegistry(
+  params: SaveToRegistryParams
+): Promise<SaveToRegistryResult> {
+  const {
+    videoId,
+    startTime,
+    endTime,
+    label,
+    category,
+    role = "Both",
+  } = params;
+
+  const supabase = await createClient();
+
+  const { data: row, error: fetchError } = await supabase
     .from("dance_library")
-    .select("motion_dna")
+    .select("motion_dna, genre")
     .eq("id", videoId)
     .single();
 
-  if (fetchError || !libraryItem?.motion_dna) {
-    console.error("Failed to fetch Motion DNA:", fetchError);
-    toast.error("The studio vault couldn't find this video's DNA. ✨");
-    return { success: false };
+  if (fetchError || !row) {
+    return {
+      success: false,
+      error: fetchError?.message ?? "Video not found in the library.",
+    };
   }
 
-  const fullDna = libraryItem.motion_dna as unknown as PoseData;
-  const frames = fullDna.frames ?? [];
+  const motionDna = row.motion_dna as PoseData | null;
+  const frames = motionDna?.frames ?? [];
 
-  const toSec = (ts: number) => (ts >= 1e4 ? ts / 1000 : ts);
-  const segmentFrames = frames.filter((f) => {
-    const t = toSec(f.timestamp);
-    return t >= startTimeSec && t <= endTimeSec;
-  });
+  if (frames.length === 0) {
+    return {
+      success: false,
+      error:
+        "This video has no motion data yet. Run extraction first, then save to registry.",
+    };
+  }
 
-  if (segmentFrames.length < 10) {
-    toast.error(
-      "This segment is too short to extract a signature (need at least ~10 frames)."
-    );
-    return { success: false };
+  const segmentFrames = sliceFrames(frames, startTime, endTime);
+
+  if (segmentFrames.length < MIN_FRAMES_FOR_VALID_MOVE) {
+    return {
+      success: false,
+      error: `This segment is too short to form a valid move (need at least ${MIN_FRAMES_FOR_VALID_MOVE} frames; got ${segmentFrames.length}). Try a longer selection.`,
+    };
   }
 
   const signature = computeMoveSignature(segmentFrames, 0);
+
   const biomechanical_profile: BiomechanicalProfile = {
     hip_tilt_curve: signature.hipTiltCurve,
     foot_velocity_curve: signature.footVelocityCurve,
     knee_flexion_curve: signature.kneeFlexionCurve,
   };
 
-  const { error: insertError } = await supabase.from("move_registry").insert({
-    name: label,
-    category: category,
+  const validation = validateBiomechanicalProfile(biomechanical_profile);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const genre =
+    row.genre === "salsa" || row.genre === "bachata" || row.genre === "other"
+      ? row.genre
+      : null;
+
+  const insertPayload: Record<string, unknown> = {
+    name: label.trim(),
+    category: category.trim() || "General",
     role,
     biomechanical_profile,
     status: "approved",
-  });
-
-  if (insertError) {
-    console.error("Registry save error:", insertError);
-    toast.error("We couldn't add this move to the registry. ✨");
-    return { success: false };
+  };
+  if (genre) {
+    insertPayload.genre = genre;
   }
 
-  toast.success(`${label} has been added to the Boutique Registry! 💃`);
+  const { error: insertError } = await supabase
+    .from("move_registry")
+    .insert(insertPayload);
+
+  if (insertError) {
+    return {
+      success: false,
+      error: insertError.message ?? "Could not add this move to the registry.",
+    };
+  }
+
   return { success: true };
 }

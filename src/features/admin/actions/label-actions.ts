@@ -31,13 +31,16 @@ export async function runAutoLabel(
 
   const { data: row, error: rowErr } = await supabase
     .from("dance_library")
-    .select("id, motion_dna")
+    .select("id, motion_dna, genre")
     .eq("id", videoId)
     .single();
 
   if (rowErr || !row) {
     return { ok: false, error: rowErr?.message ?? "Video not found" };
   }
+
+  const videoGenre =
+    row.genre === "salsa" || row.genre === "bachata" ? row.genre : "salsa";
 
   const motionDna = row.motion_dna as { frames?: unknown[] } | null;
   const rawFrames = (motionDna?.frames ?? []) as PoseFrame[];
@@ -61,7 +64,8 @@ export async function runAutoLabel(
   const { data: registryRows } = await supabase
     .from("move_registry")
     .select("id, name, biomechanical_profile")
-    .eq("status", "approved");
+    .eq("status", "approved")
+    .or(`genre.eq.${videoGenre},genre.is.null`);
 
   const registryRefs: {
     moveId: string;

@@ -1,11 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { DashboardView } from "@/features/dashboard/components/DashboardView";
+import { getAppGenre } from "@/lib/genre-server";
 
 const BLOOM_GOAL_SESSIONS_PER_WEEK = 5;
 
 export default async function StudentDashboardPage() {
   const supabase = await createClient();
+  const appGenre = await getAppGenre();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -92,7 +94,8 @@ export default async function StudentDashboardPage() {
         "id, title, video_url, genre, difficulty, instructions, slug, bpm"
       )
       .in("id", recentVideoIds)
-      .eq("status", "published");
+      .eq("status", "published")
+      .eq("genre", appGenre);
     const order = new Map(recentVideoIds.map((id, i) => [id, i]));
     continueLearningVideos = (videos ?? [])
       .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
@@ -112,6 +115,7 @@ export default async function StudentDashboardPage() {
     .from("move_registry")
     .select("id, name, category")
     .eq("status", "approved")
+    .or(`genre.eq.${appGenre},genre.is.null`)
     .limit(50);
   const moves = moveRows ?? [];
   const moveOfTheDay =

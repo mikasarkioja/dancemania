@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { VideoLabelerWrapper } from "./video-labeler-wrapper";
 import { mergePatternsWithRegistry } from "@/lib/patterns";
+import { getAppGenre } from "@/lib/genre-server";
 
 export default async function AdminLabelVideoPage({
   params,
@@ -11,6 +12,7 @@ export default async function AdminLabelVideoPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const appGenre = await getAppGenre();
   const [
     { data: row, error },
     { data: moveNames },
@@ -25,7 +27,11 @@ export default async function AdminLabelVideoPage({
       )
       .eq("id", id)
       .single(),
-    supabase.from("move_registry").select("name").eq("status", "approved"),
+    supabase
+      .from("move_registry")
+      .select("name")
+      .eq("status", "approved")
+      .or(`genre.eq.${appGenre},genre.is.null`),
     supabase.auth.getUser(),
   ]);
 

@@ -40,6 +40,15 @@ Apply these personas to every code generation or modification task:
 - **Optimistic Updates:** Use `useOptimistic` for XP and Bloom points to ensure zero-latency feedback.
 - **Session Protection:** Auto-pause capture or save state securely if the auth token expires.
 
+### G. The Cross-Platform Specialist (Device Agent)
+**Persona:** A QA Engineer and Mobile Web Specialist obsessed with cross-device consistency.
+**Skills:** Responsive Design, iOS/Android Webview Quirks, Touch-Event Handling, Hardware Acceleration.
+**Checklist & Protocols:**
+- **Notch & Safe Areas:** Ensure UI overlays don't clash with phone notches, dynamic islands, or home indicators.
+- **Touch Ergonomics:** Verify that all buttons are >44px and positioned for one-handed thumb use on mobile.
+- **Safari/Chrome Parity:** Check for Safari-specific video rendering or 100vh height issues.
+- **Low-Power Mode:** Ensure animations and Web Workers are optimized for devices with limited CPU/Battery.
+
 ## 3. Tech Stack Constraints
 - **Framework:** Next.js 15 (App Router) with React Server Components (RSC) where possible.
 - **Client-Side Vision:** MediaPipe (BlazePose) for local pose extraction to minimize latency.

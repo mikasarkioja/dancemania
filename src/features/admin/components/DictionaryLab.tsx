@@ -26,6 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const FPS = 30;
 const LEADER_COLOR = "#3b82f6";
@@ -120,13 +122,20 @@ export function DictionaryLab({ videos }: DictionaryLabProps) {
     if (!selectedVideo?.id || !moveName.trim()) return;
     setIsSaving(true);
     try {
-      await saveMoveToRegistry({
+      const result = await saveMoveToRegistry({
         videoId: selectedVideo.id,
-        startTimeSec: 0,
-        endTimeSec: durationSec || 999,
+        startTime: 0,
+        endTime: durationSec || 999,
         label: moveName.trim(),
         category: category.trim() || "General",
       });
+      if (result.success) {
+        toast.success(
+          `'${moveName.trim()}' has been added to the Gold Standard Registry! ✨`
+        );
+      } else {
+        toast.error(result.error ?? "Could not save to registry.");
+      }
     } finally {
       setIsSaving(false);
     }
@@ -270,7 +279,14 @@ export function DictionaryLab({ videos }: DictionaryLabProps) {
             disabled={!signature || !moveName.trim() || isSaving}
             className="rounded-xl"
           >
-            {isSaving ? "Saving…" : "Save to Registry"}
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              "Save to Registry"
+            )}
           </Button>
         </CardContent>
       </Card>

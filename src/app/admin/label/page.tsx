@@ -1,11 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import { getAppGenre } from "@/lib/genre-server";
 
 export default async function AdminLabelPage() {
   const supabase = await createClient();
+  const appGenre = await getAppGenre();
   const { data: rows } = await supabase
     .from("dance_library")
     .select("id, slug, title, video_url")
+    .eq("genre", appGenre)
     .order("created_at", { ascending: false });
 
   return (

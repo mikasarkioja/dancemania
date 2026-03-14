@@ -4,13 +4,6 @@ import type { DanceGenre, MoveRole } from "@/types/dance";
 import type { DifficultyLevel } from "../hooks/useDanceLibrary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-
-const GENRES: { value: DanceGenre; label: string }[] = [
-  { value: "salsa", label: "Salsa" },
-  { value: "bachata", label: "Bachata" },
-  { value: "other", label: "Other" },
-];
 
 const ROLES: { value: MoveRole; label: string }[] = [
   { value: "Leader", label: "Leader" },
@@ -60,32 +53,9 @@ export function StudentLibraryFilters({
         <CardTitle className="text-base">Filters</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label>Genre</Label>
-          <div className="flex flex-wrap gap-2">
-            {GENRES.map((g) => (
-              <button
-                key={g.value}
-                type="button"
-                onClick={() =>
-                  onFiltersChange({
-                    ...filters,
-                    genre: filters.genre === g.value ? null : g.value,
-                  })
-                }
-                className={cn(
-                  "rounded-md border px-3 py-1.5 text-sm transition-colors",
-                  filters.genre === g.value
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input hover:bg-muted"
-                )}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
+        <p className="text-xs text-muted-foreground">
+          Genre is set by the Salsa/Bachata toggle in the header.
+        </p>
         <div className="space-y-2">
           <Label>Role</Label>
           <div className="flex flex-col gap-2">

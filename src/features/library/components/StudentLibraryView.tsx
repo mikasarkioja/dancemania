@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Search } from "lucide-react";
+import { useAppGenre } from "@/contexts/GenreContext";
 
 const defaultFilters: StudentLibraryFiltersState = {
   genre: null,
@@ -21,6 +22,7 @@ const defaultFilters: StudentLibraryFiltersState = {
 };
 
 export function StudentLibraryView() {
+  const { genre: appGenre } = useAppGenre();
   const [filters, setFilters] =
     useState<StudentLibraryFiltersState>(defaultFilters);
   const [searchQuery, setSearchQuery] = useState("");
@@ -40,11 +42,11 @@ export function StudentLibraryView() {
           ? filters.difficulties[0]
           : filters.difficulties;
     return {
-      genre: filters.genre,
+      genre: appGenre,
       difficulty,
       role,
     };
-  }, [filters]);
+  }, [filters, appGenre]);
 
   const { data, error, isLoading } = useDanceLibrary(hookFilters);
 

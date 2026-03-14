@@ -1,12 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { DictionaryLab } from "@/features/admin/components/DictionaryLab";
+import { getAppGenre } from "@/lib/genre-server";
 
 export default async function AdminDictionaryPage() {
   const supabase = await createClient();
+  const appGenre = await getAppGenre();
   const { data: rows } = await supabase
     .from("dance_library")
     .select("id, title, video_url, motion_dna, bpm, genre")
+    .eq("genre", appGenre)
     .not("motion_dna", "is", null)
     .order("created_at", { ascending: false })
     .limit(20);

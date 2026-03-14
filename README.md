@@ -26,6 +26,10 @@ Next.js 15, React 19, TypeScript, Supabase (Postgres, RLS, JSONB), Tailwind, Fra
 
 Optional: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` for AI-generated move descriptions.
 
+### npm warning: "Unknown env config devdir"
+
+This warning comes from an **environment variable** (`NPM_CONFIG_DEVDIR`) that npm does not recognize. Often it is set by the Cursor IDE or another tool (e.g. for node-gyp’s dev directory). It is **harmless** and does not affect installs or builds. To stop seeing it when running npm outside Cursor, unset it in your shell (e.g. `set NPM_CONFIG_DEVDIR=` in PowerShell, or remove it from your system/user environment variables).
+
 ## Scripts
 
 - `npm run dev` – Dev server

@@ -4,6 +4,33 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Creator Supply Chain & Commercial Strategy (2025-03)
+
+### Save to Registry (server action)
+
+- **`src/features/admin/actions/registry-actions.ts`**: Refactored to a **server action** (`"use server"`). Uses `createClient` from `@/lib/supabase/server`. Accepts `videoId`, `startTime`, `endTime`, `label`, `category`, optional `role`. Fetches `motion_dna` and `genre` from `dance_library`, slices frames by time range (with `timestampToSec` for ms/sec), enforces minimum 10 frames for a valid move. Calls `computeMoveSignature` on the segment, builds `BiomechanicalProfile` (hip_tilt_curve, foot_velocity_curve, knee_flexion_curve), validates all three curves are present and non-empty via `validateBiomechanicalProfile`, then inserts into `move_registry` with genre inherited from the source video. Returns `SaveToRegistryResult` (`{ success: true }` or `{ success: false, error: string }`); no client-side toast in this file.
+- **DictionaryLab** (`src/features/admin/components/DictionaryLab.tsx`): Save to Registry button calls the server action with `startTime: 0`, `endTime: durationSec || 999`. On success shows boutique toast: `'{label}' has been added to the Gold Standard Registry! ✨`; on error shows `toast.error(result.error)`. Button shows `Loader2` spinner and "Saving…" while `isSaving`; disabled when no signature, no move name, or saving.
+
+### Genre mode & filtering
+
+- **`move_registry.genre`**: Migration `20250121000011_move_registry_genre.sql` adds optional `genre` (salsa | bachata | other) and index. Save to Registry now sets genre from the source video.
+- **Genre context & server**: `src/lib/genre-server.ts` and `src/contexts/` (e.g. genre provider/cookie) for Salsa/Bachata mode. Header genre switcher and layout; dashboard, library, encyclopedia, admin dictionary/label/review and move_registry filters scoped by genre where applicable. Documented in `docs/GENRE_MODE.md`.
+
+### Docs & UX
+
+- **`docs/COMMERCIAL_STRATEGY_AUDIT.md`**: Product/BA audit vs Commercial Strategy (Founding Member, Creator Marketplace, Freemium). Value-creation audit, gap analysis, revenue logic (Stripe/credits/XP not yet implemented), Lead Architect note on motion_dna supply vs orphaned math, UX (PracticeCapture/AssessmentFlow), Privacy (biometric/GDPR), feature flags (AUDIO_COACH, PARTNER_MODE), prioritized backlog (Must-Have for Monday vs Expansion), value-at-risk report, and Kill List (demo page, Source filter, scout deferred).
+- **`docs/MOBILE_IPHONE_UX.md`**: Mobile/iPhone UX notes.
+- **AppShell** (`src/components/AppShell.tsx`): Optional app shell/layout wrapper.
+
+### Other updates
+
+- **Label/dictionary/admin pages**: Genre-aware data and filters where applicable.
+- **Library**: `StudentLibraryView`, `StudentLibraryFilters` updated for genre.
+- **Site header, layout, globals**: Adjustments for genre switcher and styling.
+- **label-actions.ts**: Minor updates if any for genre or registry alignment.
+
+---
+
 ## Registry integration, session naming & auto-naming (2025-01)
 
 ### Move Registry ↔ Motion DNA

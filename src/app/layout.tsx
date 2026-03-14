@@ -1,11 +1,18 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "@/app/globals.css";
-import { SiteHeader } from "@/components/site-header";
-import { SplashWrapper } from "@/components/brand/SplashWrapper";
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "DanceAI",
   description: "Salsa & Bachata posture and rhythm analysis",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: "#FDF2F8",
 };
 
 export default function RootLayout({
@@ -16,10 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <SplashWrapper>
-          <SiteHeader />
-          {children}
-        </SplashWrapper>
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );
