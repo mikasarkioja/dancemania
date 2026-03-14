@@ -1,0 +1,2 @@
+# For process_pending.py (Scanner + auto-naming)
+supabase>=2.0.0

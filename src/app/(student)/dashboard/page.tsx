@@ -71,9 +71,7 @@ export default async function StudentDashboardPage() {
   );
 
   const recentVideoIds = Array.from(
-    new Map(
-      sessionsList.map((s) => [s.video_id, s.created_at])
-    ).keys()
+    new Map(sessionsList.map((s) => [s.video_id, s.created_at])).keys()
   ).slice(0, 10);
 
   let continueLearningVideos: {
@@ -84,12 +82,15 @@ export default async function StudentDashboardPage() {
     difficulty: string;
     instructions: unknown[];
     slug: string | null;
+    bpm: number | null;
   }[] = [];
 
   if (recentVideoIds.length > 0) {
     const { data: videos } = await supabase
       .from("dance_library")
-      .select("id, title, video_url, genre, difficulty, instructions, slug")
+      .select(
+        "id, title, video_url, genre, difficulty, instructions, slug, bpm"
+      )
       .in("id", recentVideoIds)
       .eq("status", "published");
     const order = new Map(recentVideoIds.map((id, i) => [id, i]));
@@ -103,6 +104,7 @@ export default async function StudentDashboardPage() {
         difficulty: r.difficulty ?? "beginner",
         instructions: Array.isArray(r.instructions) ? r.instructions : [],
         slug: r.slug ?? null,
+        bpm: r.bpm ?? null,
       }));
   }
 
@@ -113,9 +115,7 @@ export default async function StudentDashboardPage() {
     .limit(50);
   const moves = moveRows ?? [];
   const moveOfTheDay =
-    moves.length > 0
-      ? moves[Math.floor(Math.random() * moves.length)]
-      : null;
+    moves.length > 0 ? moves[Math.floor(Math.random() * moves.length)] : null;
 
   return (
     <DashboardView

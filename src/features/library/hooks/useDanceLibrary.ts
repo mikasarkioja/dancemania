@@ -16,6 +16,7 @@ export interface PublishedVideo {
   difficulty: DifficultyLevel;
   video_url: string;
   instructions: MoveSegment[];
+  bpm: number | null;
 }
 
 export interface UseDanceLibraryFilters {
@@ -60,7 +61,9 @@ export function useDanceLibrary(
       try {
         let query = supabase
           .from("dance_library")
-          .select("id, slug, title, genre, difficulty, video_url, instructions")
+          .select(
+            "id, slug, title, genre, difficulty, video_url, instructions, bpm"
+          )
           .eq("status", "published")
           .order("created_at", { ascending: false });
 
@@ -90,6 +93,7 @@ export function useDanceLibrary(
           difficulty: (row.difficulty ?? "beginner") as DifficultyLevel,
           video_url: row.video_url ?? "",
           instructions: Array.isArray(row.instructions) ? row.instructions : [],
+          bpm: row.bpm ?? null,
         }));
 
         if (role && role !== "Both") {

@@ -2,10 +2,19 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { DanceInstructions, MotionDNA, SuggestedLabel } from "@/types/dance";
+import type {
+  DanceInstructions,
+  MotionDNA,
+  SuggestedLabel,
+} from "@/types/dance";
 import { VideoLabeler } from "@/features/admin";
-import { runAutoLabel, approveSuggestedLabel, rejectSuggestedLabel } from "@/features/admin/actions/label-actions";
+import {
+  runAutoLabel,
+  approveSuggestedLabel,
+  rejectSuggestedLabel,
+} from "@/features/admin/actions/label-actions";
 
 export interface VideoLabelerWrapperProps {
   videoId: string;
@@ -14,6 +23,9 @@ export interface VideoLabelerWrapperProps {
   initialInstructions: DanceInstructions;
   motionDna?: MotionDNA | null;
   suggestedLabels?: SuggestedLabel[];
+  patterns?: string[];
+  /** If false, show banner: Save requires sign-in. */
+  isAuthenticated?: boolean;
 }
 
 export function VideoLabelerWrapper({
@@ -23,18 +35,27 @@ export function VideoLabelerWrapper({
   initialInstructions,
   motionDna = null,
   suggestedLabels = [],
+  patterns,
+  isAuthenticated = false,
 }: VideoLabelerWrapperProps) {
   const router = useRouter();
 
   const handleSave = useCallback(
-    async (instructions: DanceInstructions) => {
+    async (
+      instructions: DanceInstructions
+    ): Promise<{ ok: boolean; error?: string }> => {
       const supabase = createClient();
-      await supabase
+      const { error } = await supabase
         .from("dance_library")
         .update({ instructions })
         .eq("id", videoId);
+      if (error) {
+        return { ok: false, error: error.message };
+      }
+      router.refresh();
+      return { ok: true };
     },
-    [videoId]
+    [videoId, router]
   );
 
   const handleRunAutoLabel = useCallback(async () => {
@@ -73,6 +94,16 @@ export function VideoLabelerWrapper({
 
   return (
     <div className="space-y-4">
+      {!isAuthenticated && (
+        <div className="rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          <strong>Sign in required to save.</strong> You can segment and label,
+          but &quot;Save instructions&quot; will fail until you{" "}
+          <Link href="/login" className="underline">
+            sign in
+          </Link>
+          .
+        </div>
+      )}
       <h2 className="text-xl font-semibold">{title}</h2>
       <VideoLabeler
         videoUrl={videoUrl}
@@ -85,6 +116,7 @@ export function VideoLabelerWrapper({
         onRunAutoLabel={handleRunAutoLabel}
         onApproveSuggestion={handleApproveSuggestion}
         onRejectSuggestion={handleRejectSuggestion}
+        patterns={patterns}
       />
     </div>
   );

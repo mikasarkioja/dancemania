@@ -8,12 +8,16 @@ import type { MotionDNA, PoseFrame, PoseData } from "@/types/dance";
 import { drawSkeleton } from "@/lib/utils/skeleton-canvas";
 import {
   calculateSimilarity,
-  compareStudentToTeacher,
   getMatchingJointKeys,
 } from "@/engines/comparison-engine";
 import { createClient } from "@/lib/supabase/client";
 import { generateAndSaveCoachingFeedback } from "@/app/actions/generate-coaching-feedback";
+import {
+  generateSessionNames,
+  updatePracticeSessionName,
+} from "@/app/actions/generate-session-names";
 import { CoachingCard } from "@/components/coaching/CoachingCard";
+import { SessionNamePicker } from "./SessionNamePicker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,11 +31,43 @@ import {
   buildPoseFrameFromLandmarks,
   JOINT_KEY_TO_MP_INDEX,
 } from "../utils/mediapipe-pose-to-frame";
+import { useComparisonWorker } from "@/hooks/useComparisonWorker";
+import type { JointGroup } from "@/engines/comparison.worker";
+import { Logo } from "@/components/brand/Logo";
 
 const FPS = 30;
 const TEACHER_GHOST_COLOR = "rgba(196, 181, 253, 0.5)";
 const STUDENT_SKELETON_COLOR = "hsl(var(--primary))";
 const COUNT_IN_SEC = 3;
+
+/** Pro tips by worst joint group (champagne-and-rose, boutique-instructor tone). */
+function getProTipsForJointGroup(group: JointGroup): string[] {
+  switch (group) {
+    case "Hips":
+      return [
+        "Drive movement from your core—let your hips lead the Cuban motion.",
+        "Keep hip movement smooth and intentional; avoid locking the pelvis.",
+        "Match the teacher's hip timing; the pulse should feel natural, not forced.",
+      ];
+    case "Feet":
+      return [
+        "Check your weight distribution and foot placement on each step.",
+        "Stay on the balls of your feet for quicker direction changes.",
+        "Match the teacher's foot timing; don't rush the transitions.",
+      ];
+    case "Frame":
+      return [
+        "Maintain a soft but stable frame from shoulders to hands.",
+        "Keep your shoulders relaxed and back—let your arms follow your body.",
+        "Your frame should feel connected, not rigid; think elegant extension.",
+      ];
+    default:
+      return [
+        "Review the reference and try again—focus on one area at a time.",
+        "Small adjustments in posture and timing add up to a cleaner performance.",
+      ];
+  }
+}
 
 export interface PracticeCaptureProps {
   videoId: string;
@@ -41,6 +77,8 @@ export interface PracticeCaptureProps {
   moveId?: string | null;
   /** Genre for coaching terminology (On1, Frame, Cuban Motion). Default "Salsa". */
   genre?: "Salsa" | "Bachata";
+  /** BPM for Creative Director session naming (optional). */
+  bpm?: number | null;
   instructions?: { startTime: number; endTime: number; pattern: string }[];
 }
 
@@ -51,9 +89,15 @@ export function PracticeCapture({
   motionDna,
   moveId = null,
   genre = "Salsa",
+  bpm = null,
   instructions = [],
 }: PracticeCaptureProps) {
   const router = useRouter();
+  const {
+    isProcessing,
+    result: workerResult,
+    calibrateAndCompare,
+  } = useComparisonWorker();
   const teacherVideoRef = useRef<HTMLVideoElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const webcamCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -70,7 +114,23 @@ export function PracticeCapture({
   const [lastCoachingResult, setLastCoachingResult] = useState<{
     score: number;
     proTips: string[];
+    metrics?: {
+      tensionAvg: number;
+      isolationAvg: number;
+      placementAvg: number;
+      alignedPairs: number;
+    };
+    correctionTips?: {
+      message: string;
+      count?: number;
+      severity?: "low" | "medium" | "high";
+    }[];
   } | null>(null);
+  const [namePickerSessionId, setNamePickerSessionId] = useState<string | null>(
+    null
+  );
+  const [suggestedNames, setSuggestedNames] = useState<string[]>([]);
+  const [nameRolling, setNameRolling] = useState(false);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const teacherFrameRef = useRef<PoseFrame | null>(null);
@@ -245,81 +305,191 @@ export function PracticeCapture({
     return () => clearTimeout(t);
   }, [countDown]);
 
-  const handleStop = useCallback(async () => {
+  const handleStop = useCallback(() => {
     setRecording(false);
     if (studentFrames.length === 0) return;
     setSaving(true);
-    try {
-      const teacherMotion: PoseData = {
-        frames: teacherFrames as PoseFrame[],
-        durationMs: (teacherTime || 0) * 1000,
-        source: "teacher",
-      };
-      const studentMotion: PoseData = {
-        frames: studentFrames,
-        durationMs: studentFrames[studentFrames.length - 1]?.timestamp ?? 0,
-        source: "student",
-      };
-      const comparisonResult = compareStudentToTeacher(
-        studentMotion,
-        teacherMotion,
-        {
-          teacherPartnerId: 0,
-          studentPartnerId: 0,
-        }
-      );
-      const { score, metrics } = comparisonResult;
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) {
-        const { data: sessionRow, error: insertError } = await supabase
-          .from("practice_sessions")
-          .insert({
-            user_id: user.id,
-            video_id: videoId,
-            ...(moveId ? { move_id: moveId } : {}),
-            student_motion_data: studentMotion,
-            score_total: Math.round(score * 100),
-            metrics: {
-              tensionAvg: metrics.tensionAvg,
-              isolationAvg: metrics.isolationAvg,
-              placementAvg: metrics.placementAvg,
-              alignedPairs: metrics.alignedPairs,
-            },
-          })
-          .select("id")
-          .single();
-        if (insertError) throw insertError;
-        if (sessionRow?.id) {
-          const feedback = await generateAndSaveCoachingFeedback(
-            sessionRow.id,
-            comparisonResult,
-            genre
-          );
-          if (feedback) {
-            setLastCoachingResult({
-              score: Math.round(score * 100),
-              proTips: feedback.proTips,
-            });
-          }
-        }
-      } else {
+    const frames = studentFrames;
+    const teacher = teacherFrames;
+    calibrateAndCompare(frames, teacher)
+      .then(async (res) => {
         setLastCoachingResult({
-          score: Math.round(score * 100),
-          proTips: [
-            "Sign in to save your attempt and get personalized AI coaching tips.",
+          score: res.harmonyScore,
+          proTips: getProTipsForJointGroup(res.worstJointGroup),
+          metrics: {
+            tensionAvg: res.harmonyScore / 100,
+            isolationAvg: res.harmonyScore / 100,
+            placementAvg: res.harmonyScore / 100,
+            alignedPairs: res.pathLength ?? 0,
+          },
+          correctionTips: [
+            {
+              message: `Focus on ${res.worstJointGroup.toLowerCase()} for a stronger match.`,
+              severity: "medium",
+            },
           ],
         });
-      }
+        if (res.harmonyScore > 85) setShowSparkle(true);
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        const studentMotion: PoseData = {
+          frames,
+          durationMs: frames[frames.length - 1]?.timestamp ?? 0,
+          source: "student",
+        };
+        if (user) {
+          const { data: sessionRow, error: insertError } = await supabase
+            .from("practice_sessions")
+            .insert({
+              user_id: user.id,
+              video_id: videoId,
+              ...(moveId ? { move_id: moveId } : {}),
+              student_motion_data: studentMotion,
+              score_total: res.harmonyScore,
+              metrics: {
+                worstJointGroup: res.worstJointGroup,
+                timingOffsetMs: res.timingOffsetMs,
+                harmonyScore: res.harmonyScore,
+              },
+            })
+            .select("id")
+            .single();
+          if (!insertError && sessionRow?.id) {
+            await generateAndSaveCoachingFeedback(
+              sessionRow.id,
+              {
+                score: res.harmonyScore / 100,
+                correctionTips: [
+                  {
+                    message: `Focus on ${res.worstJointGroup.toLowerCase()} for a stronger match.`,
+                    count: 1,
+                    severity: "medium",
+                  },
+                ],
+                metrics: {
+                  tensionAvg: res.harmonyScore / 100,
+                  isolationAvg: res.harmonyScore / 100,
+                  placementAvg: res.harmonyScore / 100,
+                  alignedPairs: res.pathLength ?? 0,
+                },
+              },
+              genre
+            );
+            const naming = await generateSessionNames({
+              bpm: bpm ?? 0,
+              genre,
+              top_moves: instructions.map((i) => i.pattern),
+            });
+            setSuggestedNames(naming.names);
+            setNamePickerSessionId(sessionRow.id);
+          }
+        }
+      })
+      .catch(() => {
+        setLastCoachingResult({
+          score: 0,
+          proTips: [
+            "Comparison could not be completed. Try again or check your camera.",
+          ],
+        });
+      })
+      .finally(() => setSaving(false));
+  }, [
+    studentFrames,
+    teacherFrames,
+    videoId,
+    moveId,
+    genre,
+    bpm,
+    instructions,
+    calibrateAndCompare,
+  ]);
+
+  const handlePickSessionName = useCallback(
+    async (name: string) => {
+      if (!namePickerSessionId) return;
+      await updatePracticeSessionName(namePickerSessionId, name);
+      setNamePickerSessionId(null);
+    },
+    [namePickerSessionId]
+  );
+
+  const handleRollSessionNames = useCallback(async () => {
+    setNameRolling(true);
+    try {
+      const naming = await generateSessionNames({
+        bpm: bpm ?? 0,
+        genre,
+        top_moves: instructions.map((i) => i.pattern),
+      });
+      setSuggestedNames(naming.names);
     } finally {
-      setSaving(false);
+      setNameRolling(false);
     }
-  }, [studentFrames, teacherFrames, teacherTime, videoId, moveId, genre]);
+  }, [bpm, genre, instructions]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 relative">
+      <AnimatePresence>
+        {isProcessing && (
+          <motion.div
+            key="refining-overlay"
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-brand-champagne/90"
+              style={{ backgroundColor: "rgba(253, 242, 248, 0.92)" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            />
+            <motion.div
+              className="relative flex flex-col items-center justify-center rounded-[2rem] border border-white/40 bg-white/30 px-12 py-10 shadow-2xl backdrop-blur-xl"
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.4, 0, 0.2, 1],
+              }}
+              style={{
+                minWidth: "min(85vw, 300px)",
+                minHeight: "min(50vmin, 220px)",
+              }}
+            >
+              <motion.div
+                animate={{
+                  scale: [1, 1.05, 1],
+                  opacity: [0.9, 1, 0.9],
+                }}
+                transition={{
+                  duration: 2,
+                  repeat: Infinity,
+                  ease: "easeInOut",
+                }}
+              >
+                <Logo size={80} className="text-brand-rose" />
+              </motion.div>
+              <motion.p
+                className="mt-6 text-center font-serif text-lg lowercase tracking-wide text-foreground/90"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.35 }}
+              >
+                Refining your signature... ✨
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="grid gap-4 md:grid-cols-1">
         <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
           <CardHeader className="pb-2">
@@ -474,15 +644,65 @@ export function PracticeCapture({
         </p>
       </div>
 
-      {lastCoachingResult && (
-        <CoachingCard
-          score={lastCoachingResult.score}
-          proTips={lastCoachingResult.proTips}
-          onRetry={() => setLastCoachingResult(null)}
-          onNext={() => router.push("/library")}
-          nextLabel="Back to library"
-        />
-      )}
+      <AnimatePresence mode="wait">
+        {namePickerSessionId && (
+          <motion.div
+            key="name-picker"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 28,
+              mass: 0.8,
+            }}
+          >
+            <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
+              <CardHeader className="pb-2">
+                <CardTitle className="font-heading text-lg tracking-airy text-primary">
+                  Name your session
+                </CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Choose a boutique name or roll for new suggestions.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <SessionNamePicker
+                  names={suggestedNames}
+                  onSelect={handlePickSessionName}
+                  onRoll={handleRollSessionNames}
+                  rolling={nameRolling}
+                />
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+        {lastCoachingResult && !namePickerSessionId && (
+          <motion.div
+            key="coaching-card"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{
+              type: "spring",
+              stiffness: 300,
+              damping: 28,
+              mass: 0.8,
+            }}
+          >
+            <CoachingCard
+              score={lastCoachingResult.score}
+              proTips={lastCoachingResult.proTips}
+              metrics={lastCoachingResult.metrics}
+              correctionTips={lastCoachingResult.correctionTips}
+              onRetry={() => setLastCoachingResult(null)}
+              onNext={() => router.push("/library")}
+              nextLabel="Back to library"
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

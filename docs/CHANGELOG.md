@@ -4,6 +4,35 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Registry integration, session naming & auto-naming (2025-01)
+
+### Move Registry ↔ Motion DNA
+
+- **`src/features/admin/actions/registry-actions.ts`**: Integration between extracted Motion DNA and the Move Registry. When you **Save to Registry** from Dictionary Lab, it fetches `motion_dna` from `dance_library`, slices the segment, runs `computeMoveSignature`, and inserts a `move_registry` row with `biomechanical_profile` (hip_tilt_curve, foot_velocity_curve, knee_flexion_curve) as the Gold Standard. Documented in `docs/MOTION_DNA_PIPELINE_AUDIT.md`.
+- **Dictionary Lab**: Save button uses `saveMoveToRegistry` with `videoId`, `selection.start`/`selection.end`, `label`, `category`, optional `genre`; state renamed to `isSaving`; success logging. BPM and genre passed from dictionary page for future use.
+
+### Creative Director & session naming
+
+- **`src/engines/naming-engine.ts`**: Creative Director – builds prompts for boutique-style session names from BPM, genre, and top moves. Exports `buildSessionNamingPrompt`, `parseSessionNames`, `getMockSessionNames`. Prompt: luxury dance brand, aspirational names, avoid generic (e.g. "Salsa 1").
+- **`src/app/actions/generate-session-names.ts`**: Server action `generateSessionNames(bpm, genre, top_moves)` – calls OpenAI or Anthropic, returns 3 names; fallback mock names. `updatePracticeSessionName(sessionId, name)` updates `practice_sessions.session_name`.
+- **`practice_sessions.session_name`**: Migration `20250119000009_practice_sessions_session_name.sql` adds optional `session_name` for user-chosen or suggested names.
+- **SessionNamePicker** (`src/features/practice/components/SessionNamePicker.tsx`): Rose-gold pill-style UI with 3 name suggestions and **Roll the Dice** for new ones. Shown after a student saves a practice session; on pick, session is updated and CoachingCard is shown.
+- **PracticeCapture**: After save, fetches 3 names via `generateSessionNames` (using `bpm`, `genre`, `instructions[].pattern`), shows name picker card; on select or roll, updates session and logs. Practice page passes `bpm` from `dance_library`.
+
+### Video processing & auto-naming (Python)
+
+- **`scripts/process_pending.py`**: Scanner placeholder + **auto-naming**. `generate_pro_name(bpm, genre, filename)` – boutique name only when filename is generic (`IMG_`, `video_`, `v_`); BPM fallback → `Studio Session - [Timestamp]`. `resolve_display_name(bpm, genre, title, current_display_name)` – only suggests update when title is generic and `display_name` is empty (never overwrites manual names). `run_auto_name(supabase, video_id)` and `apply_display_name_on_update(...)` for pipeline integration. CLI: `--auto-name` to set `display_name` for generic titles; logs `[auto-name] <id>: <name>` to terminal.
+- **`dance_library.display_name`**: Migration `20250120000010_dance_library_display_name.sql` adds optional `display_name`; set only for generic titles by auto-naming.
+- **`scripts/requirements.txt`**: `supabase>=2.0.0` for process_pending DB access.
+- **README-auto-label.md**: Documented `--auto-name` option and no-overwrite behavior.
+
+### Docs & config
+
+- **MOTION_DNA_PIPELINE_AUDIT.md**: Integration map updated (Dictionary Lab → registry-actions → move_registry); 5.1 and 5.3 marked done; summary table updated for signature-calculator and BiomechanicalProfile.
+- **.env.example**: Optional keys for extraction, OpenAI/Anthropic, app URL, and Python service role note.
+
+---
+
 ## AI-Assisted Labeling & Move Registry (2025-01)
 
 ### Database

@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import type { DanceInstructions, MoveSegment, MotionDNA, SuggestedLabel } from "@/types/dance";
+import type {
+  DanceInstructions,
+  MoveSegment,
+  MotionDNA,
+  SuggestedLabel,
+} from "@/types/dance";
 import type { SuggestedSegment } from "@/engines/segmentation";
 import { runSegmentationAsync } from "@/engines/runSegmentationWorker";
 import {
@@ -10,7 +15,13 @@ import {
   getNextBeat,
   getPrevBeat,
 } from "@/lib/utils/rhythm-snap";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,18 +33,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Square, Plus, Trash2, Wand2, Check, Sparkles, X, SplitSquareVertical, Music2 } from "lucide-react";
+import {
+  Play,
+  Square,
+  Plus,
+  Trash2,
+  Wand2,
+  Check,
+  Sparkles,
+  X,
+  SplitSquareVertical,
+  Music2,
+  CheckCircle2,
+  Circle,
+} from "lucide-react";
 
-const PATTERNS = [
-  "Box-step",
-  "Pendulo",
-  "Completo",
-  "Dile que no",
-  "Enchufla",
-  "Cross body lead",
-  "Open break",
-  "Other",
-];
+import { DEFAULT_PATTERNS } from "@/lib/patterns";
+
+const FALLBACK_PATTERNS = [...DEFAULT_PATTERNS];
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -45,7 +62,9 @@ export interface VideoLabelerProps {
   videoUrl: string;
   videoId?: string;
   instructions: DanceInstructions;
-  onSave: (instructions: DanceInstructions) => void;
+  onSave: (
+    instructions: DanceInstructions
+  ) => void | Promise<{ ok: boolean; error?: string }>;
   disabled?: boolean;
   /** Optional motion_dna for auto-labeling (Magic Wand). */
   motionDna?: MotionDNA | null;
@@ -54,9 +73,19 @@ export interface VideoLabelerProps {
   /** Registry-based suggestions (Scanner); show ghost blocks and Approve/Reject. */
   suggestedLabels?: SuggestedLabel[];
   /** Run Scanner (compare motion_dna to move_registry), then refresh. */
-  onRunAutoLabel?: () => Promise<{ ok: boolean; error?: string; suggestedLabels?: SuggestedLabel[] }>;
-  onApproveSuggestion?: (s: SuggestedLabel) => Promise<{ ok: boolean; error?: string }>;
-  onRejectSuggestion?: (s: SuggestedLabel) => Promise<{ ok: boolean; error?: string }>;
+  onRunAutoLabel?: () => Promise<{
+    ok: boolean;
+    error?: string;
+    suggestedLabels?: SuggestedLabel[];
+    message?: string;
+  }>;
+  onApproveSuggestion?: (
+    s: SuggestedLabel
+  ) => Promise<{ ok: boolean; error?: string }>;
+  onRejectSuggestion?: (
+    s: SuggestedLabel
+  ) => Promise<{ ok: boolean; error?: string }>;
+  patterns?: string[];
 }
 
 /**
@@ -64,6 +93,74 @@ export interface VideoLabelerProps {
  * pattern dropdown, and teacher instruction per segment. Saves to dance_library.instructions.
  */
 const REVIEW_NEEDED_THRESHOLD = 0.6;
+
+function BulkBar({
+  patternList,
+  onApply,
+  onClear,
+  disabled,
+}: {
+  patternList: string[];
+  onApply: (pattern: string, instruction: string) => void;
+  onClear: () => void;
+  disabled?: boolean;
+}) {
+  const [bulkPattern, setBulkPattern] = useState("");
+  const [bulkInstruction, setBulkInstruction] = useState("");
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded bg-muted/50 px-2 py-1">
+      <span className="text-xs text-muted-foreground">Bulk:</span>
+      <Select
+        value={bulkPattern || "__none__"}
+        onValueChange={(v) => setBulkPattern(v === "__none__" ? "" : v)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-7 w-[120px]">
+          <SelectValue placeholder="Pattern" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__none__">(no change)</SelectItem>
+          {patternList.map((p) => (
+            <SelectItem key={p} value={p}>
+              {p}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Input
+        className="h-7 w-[160px] text-xs"
+        placeholder="Instruction"
+        value={bulkInstruction}
+        onChange={(e) => setBulkInstruction(e.target.value)}
+        disabled={disabled}
+      />
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={() => {
+          onApply(bulkPattern, bulkInstruction);
+          setBulkPattern("");
+          setBulkInstruction("");
+        }}
+        disabled={disabled}
+      >
+        Apply to selected
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7 text-xs"
+        onClick={onClear}
+        disabled={disabled}
+      >
+        Cancel
+      </Button>
+    </div>
+  );
+}
 
 export function VideoLabeler({
   videoUrl,
@@ -77,21 +174,40 @@ export function VideoLabeler({
   onRunAutoLabel,
   onApproveSuggestion,
   onRejectSuggestion,
+  patterns: patternsProp,
 }: VideoLabelerProps) {
+  const patternList = patternsProp?.length ? patternsProp : FALLBACK_PATTERNS;
   const videoRef = useRef<HTMLVideoElement>(null);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [segments, setSegments] = useState<MoveSegment[]>(instructions);
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() =>
+    JSON.stringify(instructions)
+  );
   const [startTime, setStartTime] = useState<number | null>(null);
   const [endTime, setEndTime] = useState<number | null>(null);
-  const [pattern, setPattern] = useState<string>(PATTERNS[0]);
+  const [pattern, setPattern] = useState<string>(patternList[0] ?? "Other");
   const [teacherInstruction, setTeacherInstruction] = useState("");
   const [suggestions, setSuggestions] = useState<SuggestedSegment[]>([]);
   const [scanning, setScanning] = useState(false);
   const [autoLabeling, setAutoLabeling] = useState(false);
-  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
+  const [autoLabelMessage, setAutoLabelMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
+    "idle"
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<
+    number | null
+  >(null);
+  const [selectedForBulk, setSelectedForBulk] = useState<Set<number>>(
+    new Set()
+  );
   const [breakpoints, setBreakpoints] = useState<number[]>([]);
   const beats = beatTimestamps.length > 0 ? beatTimestamps : null;
+
+  const segmentsSnapshot = JSON.stringify(segments);
+  const hasUnsavedChanges = segmentsSnapshot !== lastSavedSnapshot;
 
   const snap = useCallback(
     (t: number) => (beats ? findNearestBeat(t, beats) : t),
@@ -100,12 +216,15 @@ export function VideoLabeler({
 
   useEffect(() => {
     setSegments(instructions);
+    setLastSavedSnapshot(JSON.stringify(instructions));
   }, [instructions]);
 
   useEffect(() => {
     if (selectedSegmentIndex != null && segments[selectedSegmentIndex]) {
       setPattern(segments[selectedSegmentIndex].pattern);
-      setTeacherInstruction(segments[selectedSegmentIndex].teacherInstruction ?? "");
+      setTeacherInstruction(
+        segments[selectedSegmentIndex].teacherInstruction ?? ""
+      );
     }
   }, [selectedSegmentIndex, segments]);
 
@@ -158,32 +277,70 @@ export function VideoLabeler({
       pattern,
       teacherInstruction: teacherInstruction.trim() || pattern,
     };
-    setSegments((prev) => [...prev, newSegment].sort((a, b) => a.startTime - b.startTime));
+    setSegments((prev) =>
+      [...prev, newSegment].sort((a, b) => a.startTime - b.startTime)
+    );
     setStartTime(null);
     setEndTime(null);
     setTeacherInstruction("");
-  }, [startTime, endTime, pattern, teacherInstruction, currentTime, beats, snap]);
+  }, [
+    startTime,
+    endTime,
+    pattern,
+    teacherInstruction,
+    currentTime,
+    beats,
+    snap,
+  ]);
 
-  const handleRemoveSegment = useCallback((index: number) => {
-    setSegments((prev) => prev.filter((_, i) => i !== index));
-    if (selectedSegmentIndex === index) setSelectedSegmentIndex(null);
-    else if (selectedSegmentIndex != null && selectedSegmentIndex > index)
-      setSelectedSegmentIndex(selectedSegmentIndex - 1);
-  }, [selectedSegmentIndex]);
+  const handleRemoveSegment = useCallback(
+    (index: number) => {
+      setSegments((prev) => prev.filter((_, i) => i !== index));
+      if (selectedSegmentIndex === index) setSelectedSegmentIndex(null);
+      else if (selectedSegmentIndex != null && selectedSegmentIndex > index)
+        setSelectedSegmentIndex(selectedSegmentIndex - 1);
+    },
+    [selectedSegmentIndex]
+  );
 
   const handleUpdateSegment = useCallback(() => {
-    if (selectedSegmentIndex == null || selectedSegmentIndex >= segments.length) return;
+    if (selectedSegmentIndex == null || selectedSegmentIndex >= segments.length)
+      return;
     setSegments((prev) =>
       prev.map((s, i) =>
         i === selectedSegmentIndex
-          ? { ...s, pattern, teacherInstruction: teacherInstruction.trim() || pattern }
+          ? {
+              ...s,
+              pattern,
+              teacherInstruction: teacherInstruction.trim() || pattern,
+            }
           : s
       )
     );
   }, [selectedSegmentIndex, segments.length, pattern, teacherInstruction]);
 
-  const handleSave = useCallback(() => {
-    onSave(segments);
+  const handleSave = useCallback(async () => {
+    setSaveStatus("idle");
+    setSaveError(null);
+    setSaving(true);
+    try {
+      const result = await Promise.resolve(onSave(segments));
+      if (result && typeof result === "object" && "ok" in result) {
+        if (result.ok) {
+          setSaveStatus("success");
+          setLastSavedSnapshot(JSON.stringify(segments));
+          setTimeout(() => setSaveStatus("idle"), 3000);
+        } else {
+          setSaveStatus("error");
+          setSaveError(result.error ?? "Save failed");
+        }
+      }
+    } catch (e) {
+      setSaveStatus("error");
+      setSaveError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
   }, [segments, onSave]);
 
   const handleMagicWand = useCallback(async () => {
@@ -199,9 +356,19 @@ export function VideoLabeler({
 
   const handleRunAutoLabel = useCallback(async () => {
     if (!onRunAutoLabel) return;
+    setAutoLabelMessage(null);
     setAutoLabeling(true);
     try {
-      await onRunAutoLabel();
+      const result = await onRunAutoLabel();
+      if (result?.ok && result.suggestedLabels?.length) {
+        setAutoLabelMessage(
+          `Found ${result.suggestedLabels.length} suggestion(s).`
+        );
+      } else if (result?.ok && result.message) {
+        setAutoLabelMessage(result.message);
+      } else if (result && !result.ok && result.error) {
+        setAutoLabelMessage(result.error);
+      }
     } finally {
       setAutoLabeling(false);
     }
@@ -213,7 +380,9 @@ export function VideoLabeler({
     const snapped = snap(t);
     setBreakpoints((prev) => {
       const next = [...prev, snapped].sort((a, b) => a - b);
-      return next.filter((v, i) => i === 0 || v - next[i - 1] >= BREAKPOINT_MIN_GAP);
+      return next.filter(
+        (v, i) => i === 0 || v - next[i - 1] >= BREAKPOINT_MIN_GAP
+      );
     });
   }, [currentTime, snap]);
 
@@ -231,14 +400,18 @@ export function VideoLabeler({
     }
     setBreakpoints((prev) => {
       const merged = [...prev, ...suggested].sort((a, b) => a - b);
-      return merged.filter((v, i) => i === 0 || v - merged[i - 1] >= BREAKPOINT_MIN_GAP);
+      return merged.filter(
+        (v, i) => i === 0 || v - merged[i - 1] >= BREAKPOINT_MIN_GAP
+      );
     });
   }, [beats, duration]);
 
   const breakpointsToSegments = useCallback(
     (bps: number[], dur: number): MoveSegment[] => {
       if (dur <= 0) return [];
-      const sorted = [...bps].filter((t) => t > 0 && t < dur).sort((a, b) => a - b);
+      const sorted = [...bps]
+        .filter((t) => t > 0 && t < dur)
+        .sort((a, b) => a - b);
       const times = [0, ...sorted, dur];
       const out: MoveSegment[] = [];
       for (let i = 0; i < times.length - 1; i++) {
@@ -261,26 +434,89 @@ export function VideoLabeler({
     if (duration <= 0) return;
     const newSegments = breakpointsToSegments(breakpoints, duration);
     if (newSegments.length === 0) return;
-    setSegments((prev) => [...prev, ...newSegments].sort((a, b) => a.startTime - b.startTime));
+    setSegments((prev) =>
+      [...prev, ...newSegments].sort((a, b) => a.startTime - b.startTime)
+    );
     setBreakpoints([]);
     setSelectedSegmentIndex(null);
   }, [breakpoints, duration, breakpointsToSegments]);
 
-  const handleConfirmSuggestion = useCallback((index: number) => {
-    const sug = suggestions[index];
-    if (!sug) return;
-    const labelName = sug.label.replace(/^Suggested:\s*/i, "").trim();
-    const start = beats ? snap(sug.start) : sug.start;
-    const end = beats ? snap(sug.end) : sug.end;
-    const newSegment: MoveSegment = {
-      startTime: start,
-      endTime: end,
-      pattern: PATTERNS.includes(labelName) ? labelName : labelName || "Other",
-      teacherInstruction: labelName || "Suggested move",
-    };
-    setSegments((prev) => [...prev, newSegment].sort((a, b) => a.startTime - b.startTime));
-    setSuggestions((prev) => prev.filter((_, i) => i !== index));
-  }, [suggestions, beats, snap]);
+  const handleCreateSegmentsFromSuggestions = useCallback(() => {
+    if (!suggestedLabels.length) return;
+    const newSegments: MoveSegment[] = suggestedLabels.map((s) => ({
+      startTime: s.startTime,
+      endTime: s.endTime,
+      pattern: patternList.includes(s.move_name)
+        ? s.move_name
+        : s.move_name || "Other",
+      teacherInstruction: "",
+    }));
+    setSegments((prev) =>
+      [...prev, ...newSegments].sort((a, b) => a.startTime - b.startTime)
+    );
+    setAutoLabelMessage(
+      `Added ${newSegments.length} segment(s) from suggestions. Approve/Reject still updates video_moves.`
+    );
+  }, [suggestedLabels, patternList]);
+
+  const handleSegmentFieldChange = useCallback(
+    (index: number, field: "pattern" | "teacherInstruction", value: string) => {
+      setSegments((prev) =>
+        prev.map((s, i) =>
+          i === index
+            ? field === "pattern"
+              ? { ...s, pattern: value }
+              : { ...s, teacherInstruction: value }
+            : s
+        )
+      );
+    },
+    []
+  );
+
+  const handleBulkApply = useCallback(
+    (bulkPattern: string, bulkInstruction: string) => {
+      if (selectedForBulk.size === 0) return;
+      setSegments((prev) =>
+        prev.map((s, i) =>
+          selectedForBulk.has(i)
+            ? {
+                ...s,
+                ...(bulkPattern.trim() ? { pattern: bulkPattern.trim() } : {}),
+                ...(bulkInstruction.trim()
+                  ? { teacherInstruction: bulkInstruction.trim() }
+                  : {}),
+              }
+            : s
+        )
+      );
+      setSelectedForBulk(new Set());
+    },
+    [selectedForBulk]
+  );
+
+  const handleConfirmSuggestion = useCallback(
+    (index: number) => {
+      const sug = suggestions[index];
+      if (!sug) return;
+      const labelName = sug.label.replace(/^Suggested:\s*/i, "").trim();
+      const start = beats ? snap(sug.start) : sug.start;
+      const end = beats ? snap(sug.end) : sug.end;
+      const newSegment: MoveSegment = {
+        startTime: start,
+        endTime: end,
+        pattern: patternList.includes(labelName)
+          ? labelName
+          : labelName || "Other",
+        teacherInstruction: labelName || "Suggested move",
+      };
+      setSegments((prev) =>
+        [...prev, newSegment].sort((a, b) => a.startTime - b.startTime)
+      );
+      setSuggestions((prev) => prev.filter((_, i) => i !== index));
+    },
+    [suggestions, beats, snap, patternList]
+  );
 
   const handleNudgeSegment = useCallback(
     (index: number, direction: "prev" | "next") => {
@@ -291,18 +527,14 @@ export function VideoLabeler({
         if (newStart == null) return;
         if (newStart >= seg.endTime) return;
         setSegments((prev) =>
-          prev.map((s, i) =>
-            i === index ? { ...s, startTime: newStart } : s
-          )
+          prev.map((s, i) => (i === index ? { ...s, startTime: newStart } : s))
         );
       } else {
         const newEnd = getNextBeat(seg.endTime, beats);
         if (newEnd == null) return;
         if (newEnd <= seg.startTime) return;
         setSegments((prev) =>
-          prev.map((s, i) =>
-            i === index ? { ...s, endTime: newEnd } : s
-          )
+          prev.map((s, i) => (i === index ? { ...s, endTime: newEnd } : s))
         );
       }
     },
@@ -312,7 +544,11 @@ export function VideoLabeler({
   useEffect(() => {
     if (!beats || selectedSegmentIndex == null) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      )
+        return;
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         handleNudgeSegment(selectedSegmentIndex, "prev");
@@ -330,8 +566,47 @@ export function VideoLabeler({
       <CardHeader>
         <CardTitle>Move labeling</CardTitle>
         <CardDescription>
-          Step 1: Set breakpoints between moves (one click per boundary). Step 2: Convert to segments and label with pattern + instruction.
+          Step 1: Set breakpoints between moves (one click per boundary). Step
+          2: Convert to segments and label with pattern + instruction.
         </CardDescription>
+        {/* Progress checklist */}
+        <div className="flex flex-wrap items-center gap-4 pt-2 text-xs">
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            {breakpoints.length > 0 || segments.length > 0 ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <Circle className="h-4 w-4" />
+            )}
+            1. Breakpoints / segments
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            {segments.length > 0 ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <Circle className="h-4 w-4" />
+            )}
+            2. Segments created
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            {segments.length > 0 &&
+            segments.every(
+              (s) => s.pattern?.trim() || s.teacherInstruction?.trim()
+            ) ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <Circle className="h-4 w-4" />
+            )}
+            3. Labels filled
+          </span>
+          <span className="flex items-center gap-1.5 text-muted-foreground">
+            {!hasUnsavedChanges && segments.length > 0 ? (
+              <CheckCircle2 className="h-4 w-4 text-green-600" />
+            ) : (
+              <Circle className="h-4 w-4" />
+            )}
+            4. Saved
+          </span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Responsive video player */}
@@ -366,145 +641,165 @@ export function VideoLabeler({
             </span>
           </div>
           {/* Timeline strip: beat grid + segment markers */}
-          {duration > 0 && (segments.length > 0 || breakpoints.length > 0 || suggestions.length > 0 || suggestedLabels.length > 0 || (beats && beats.length > 0)) && (
-            <div className="space-y-1">
-              {/* Beat grid (light grey vertical lines) + segment blocks */}
-              {(segments.length > 0 || breakpoints.length > 0 || (beats && beats.length > 0)) && (
-                <div className="relative h-6 w-full overflow-hidden rounded bg-secondary">
-                  {beats &&
-                    beats
-                      .filter((t) => t >= 0 && t <= duration)
-                      .map((t, i) => (
-                        <div
-                          key={`beat-${i}`}
-                          className="absolute top-0 h-full w-px bg-muted-foreground/25"
-                          style={{ left: `${(t / duration) * 100}%` }}
-                          aria-hidden
-                        />
-                      ))}
-                  {breakpoints.map((t, i) => (
-                    <div
-                      key={`bp-${i}`}
-                      className="absolute top-0 h-full w-0.5 bg-amber-500"
-                      style={{ left: `${(t / duration) * 100}%` }}
-                      title={formatTime(t)}
-                    />
-                  ))}
-                  {segments.map((seg, i) => (
-                    <motion.div
-                      key={i}
-                      layout
-                      transition={{ type: "spring", stiffness: 400, damping: 35 }}
-                      className="absolute top-0 h-full rounded bg-primary/60"
-                      style={{
-                        left: `${(seg.startTime / duration) * 100}%`,
-                        width: `${((seg.endTime - seg.startTime) / duration) * 100}%`,
-                      }}
-                      title={`${seg.pattern}: ${seg.teacherInstruction}`}
-                    />
-                  ))}
-                </div>
-              )}
-              {/* Registry suggestions (Run auto label) */}
-              {duration > 0 && suggestedLabels.length > 0 && (
-                <div className="relative h-6 w-full overflow-visible rounded bg-secondary/60">
-                  {suggestedLabels.map((s, i) => (
-                    <div
-                      key={i}
-                      className="absolute top-0 flex h-full items-center gap-1 rounded border border-amber-500/60 bg-amber-500/25 px-1"
-                      style={{
-                        left: `${(s.startTime / duration) * 100}%`,
-                        width: `${((s.endTime - s.startTime) / duration) * 100}%`,
-                        minWidth: "80px",
-                      }}
-                      title={`${s.move_name}${s.similarity != null ? ` (${(s.similarity * 100).toFixed(0)}%)` : ""}`}
-                    >
-                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-foreground">
-                        {s.move_name}
-                      </span>
-                      {s.similarity != null && (
-                        <span className="shrink-0 text-[9px] text-muted-foreground">
-                          {(s.similarity * 100).toFixed(0)}%
-                        </span>
-                      )}
-                      {onApproveSuggestion && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 shrink-0"
-                          onClick={() => onApproveSuggestion(s)}
-                          disabled={disabled}
-                          aria-label="Approve"
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
-                      )}
-                      {onRejectSuggestion && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 shrink-0"
-                          onClick={() => onRejectSuggestion(s)}
-                          disabled={disabled}
-                          aria-label="Reject"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Ghost blocks (Magic Wand suggestions) */}
-              {duration > 0 && suggestions.length > 0 && (
-                <div className="relative h-6 w-full overflow-visible rounded bg-secondary/60">
-                  {suggestions.map((sug, i) => {
-                    const isReviewNeeded = sug.confidence < REVIEW_NEEDED_THRESHOLD;
-                    return (
+          {duration > 0 &&
+            (segments.length > 0 ||
+              breakpoints.length > 0 ||
+              suggestions.length > 0 ||
+              suggestedLabels.length > 0 ||
+              (beats && beats.length > 0)) && (
+              <div className="space-y-1">
+                {/* Beat grid (light grey vertical lines) + segment blocks */}
+                {(segments.length > 0 ||
+                  breakpoints.length > 0 ||
+                  (beats && beats.length > 0)) && (
+                  <div className="relative h-6 w-full overflow-hidden rounded bg-secondary">
+                    {beats &&
+                      beats
+                        .filter((t) => t >= 0 && t <= duration)
+                        .map((t, i) => (
+                          <div
+                            key={`beat-${i}`}
+                            className="absolute top-0 h-full w-px bg-muted-foreground/25"
+                            style={{ left: `${(t / duration) * 100}%` }}
+                            aria-hidden
+                          />
+                        ))}
+                    {breakpoints.map((t, i) => (
+                      <div
+                        key={`bp-${i}`}
+                        className="absolute top-0 h-full w-0.5 bg-amber-500"
+                        style={{ left: `${(t / duration) * 100}%` }}
+                        title={formatTime(t)}
+                      />
+                    ))}
+                    {segments.map((seg, i) => (
+                      <motion.div
+                        key={i}
+                        layout
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 35,
+                        }}
+                        className="absolute top-0 h-full rounded bg-primary/60"
+                        style={{
+                          left: `${(seg.startTime / duration) * 100}%`,
+                          width: `${((seg.endTime - seg.startTime) / duration) * 100}%`,
+                        }}
+                        title={`${seg.pattern}: ${seg.teacherInstruction}`}
+                      />
+                    ))}
+                  </div>
+                )}
+                {/* Registry suggestions (Run auto label) */}
+                {duration > 0 && suggestedLabels.length > 0 && (
+                  <div className="relative h-6 w-full overflow-visible rounded bg-secondary/60">
+                    {suggestedLabels.map((s, i) => (
                       <div
                         key={i}
-                        className="absolute top-0 flex h-full items-center gap-1 rounded border px-1"
+                        className="absolute top-0 flex h-full items-center gap-1 rounded border border-amber-500/60 bg-amber-500/25 px-1"
                         style={{
-                          left: `${(sug.start / duration) * 100}%`,
-                          width: `${((sug.end - sug.start) / duration) * 100}%`,
+                          left: `${(s.startTime / duration) * 100}%`,
+                          width: `${((s.endTime - s.startTime) / duration) * 100}%`,
                           minWidth: "80px",
-                          backgroundColor: isReviewNeeded
-                            ? "rgba(234, 179, 8, 0.4)"
-                            : "rgba(59, 130, 246, 0.35)",
-                          borderColor: isReviewNeeded ? "rgb(234, 179, 8)" : "rgba(59, 130, 246, 0.6)",
                         }}
-                        title={`${sug.label} (${(sug.confidence * 100).toFixed(0)}%)`}
+                        title={`${s.move_name}${s.similarity != null ? ` (${(s.similarity * 100).toFixed(0)}%)` : ""}`}
                       >
                         <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-foreground">
-                          {isReviewNeeded ? "Review needed" : sug.label.replace(/^Suggested:\s*/i, "")}
+                          {s.move_name}
                         </span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 shrink-0"
-                          onClick={() => handleConfirmSuggestion(i)}
-                          disabled={disabled}
-                          aria-label="Confirm segment"
-                        >
-                          <Check className="h-3 w-3" />
-                        </Button>
+                        {s.similarity != null && (
+                          <span className="shrink-0 text-[9px] text-muted-foreground">
+                            {(s.similarity * 100).toFixed(0)}%
+                          </span>
+                        )}
+                        {onApproveSuggestion && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0"
+                            onClick={() => onApproveSuggestion(s)}
+                            disabled={disabled}
+                            aria-label="Approve"
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        )}
+                        {onRejectSuggestion && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0"
+                            onClick={() => onRejectSuggestion(s)}
+                            disabled={disabled}
+                            aria-label="Reject"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                    ))}
+                  </div>
+                )}
+                {/* Ghost blocks (Magic Wand suggestions) */}
+                {duration > 0 && suggestions.length > 0 && (
+                  <div className="relative h-6 w-full overflow-visible rounded bg-secondary/60">
+                    {suggestions.map((sug, i) => {
+                      const isReviewNeeded =
+                        sug.confidence < REVIEW_NEEDED_THRESHOLD;
+                      return (
+                        <div
+                          key={i}
+                          className="absolute top-0 flex h-full items-center gap-1 rounded border px-1"
+                          style={{
+                            left: `${(sug.start / duration) * 100}%`,
+                            width: `${((sug.end - sug.start) / duration) * 100}%`,
+                            minWidth: "80px",
+                            backgroundColor: isReviewNeeded
+                              ? "rgba(234, 179, 8, 0.4)"
+                              : "rgba(59, 130, 246, 0.35)",
+                            borderColor: isReviewNeeded
+                              ? "rgb(234, 179, 8)"
+                              : "rgba(59, 130, 246, 0.6)",
+                          }}
+                          title={`${sug.label} (${(sug.confidence * 100).toFixed(0)}%)`}
+                        >
+                          <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-foreground">
+                            {isReviewNeeded
+                              ? "Review needed"
+                              : sug.label.replace(/^Suggested:\s*/i, "")}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-5 w-5 shrink-0"
+                            onClick={() => handleConfirmSuggestion(i)}
+                            disabled={disabled}
+                            aria-label="Confirm segment"
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
         </div>
 
         {/* Step 1: Breakpoints (one click per boundary) */}
         <div className="space-y-2 rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 p-3">
-          <Label className="text-muted-foreground">Step 1 — Set breakpoints</Label>
+          <Label className="text-muted-foreground">
+            Step 1 — Set breakpoints
+          </Label>
           <p className="text-xs text-muted-foreground">
-            Scrub to each boundary between moves and click once. With beat data, you can suggest breakpoints every 4 beats (e.g. Bachata &quot;1, 2, 3, 4&quot;).
+            Scrub to each boundary between moves and click once. With beat data,
+            you can suggest breakpoints every 4 beats (e.g. Bachata &quot;1, 2,
+            3, 4&quot;).
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <Button
@@ -537,7 +832,8 @@ export function VideoLabeler({
                 onClick={handleConvertBreakpointsToSegments}
                 disabled={disabled}
               >
-                Convert to segments ({breakpointsToSegments(breakpoints, duration).length})
+                Convert to segments (
+                {breakpointsToSegments(breakpoints, duration).length})
               </Button>
             )}
           </div>
@@ -597,12 +893,16 @@ export function VideoLabeler({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="pattern">Pattern</Label>
-            <Select value={pattern} onValueChange={setPattern} disabled={disabled}>
+            <Select
+              value={pattern}
+              onValueChange={setPattern}
+              disabled={disabled}
+            >
               <SelectTrigger id="pattern">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PATTERNS.map((p) => (
+                {patternList.map((p) => (
                   <SelectItem key={p} value={p}>
                     {p}
                   </SelectItem>
@@ -658,54 +958,138 @@ export function VideoLabeler({
             </Button>
           )}
           {onRunAutoLabel && videoId && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleRunAutoLabel}
-              disabled={disabled || autoLabeling}
-            >
-              <Sparkles className="mr-2 h-4 w-4" />
-              {autoLabeling ? "Running…" : "Run auto label"}
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleRunAutoLabel}
+                disabled={disabled || autoLabeling}
+              >
+                <Sparkles className="mr-2 h-4 w-4" />
+                {autoLabeling ? "Running…" : "Run auto label"}
+              </Button>
+              {suggestedLabels.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCreateSegmentsFromSuggestions}
+                  disabled={disabled}
+                >
+                  Create segments from suggestions ({suggestedLabels.length})
+                </Button>
+              )}
+              {autoLabelMessage && (
+                <p className="w-full text-xs text-muted-foreground">
+                  {autoLabelMessage}
+                </p>
+              )}
+            </>
           )}
         </div>
 
-        {/* List of segments */}
+        {/* List of segments: inline edit + bulk */}
         {segments.length > 0 && (
           <div className="space-y-2">
-            <Label>Segments</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>Segments</Label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline"
+                  onClick={() =>
+                    setSelectedForBulk(
+                      selectedForBulk.size === segments.length
+                        ? new Set()
+                        : new Set(segments.map((_, i) => i))
+                    )
+                  }
+                >
+                  {selectedForBulk.size === segments.length
+                    ? "Clear selection"
+                    : "Select all"}
+                </button>
+                {selectedForBulk.size > 0 && (
+                  <BulkBar
+                    patternList={patternList}
+                    onApply={handleBulkApply}
+                    onClear={() => setSelectedForBulk(new Set())}
+                    disabled={disabled}
+                  />
+                )}
+              </div>
+            </div>
             {beats && (
               <p className="text-xs text-muted-foreground">
                 Select a segment and use ← / → to nudge to previous/next beat.
+                Edit pattern and instruction inline.
               </p>
             )}
             <ul className="space-y-1 rounded-md border p-2">
               {segments.map((seg, i) => (
                 <li
                   key={i}
-                  className={`flex items-center justify-between gap-2 rounded-md px-2 py-1 text-sm ${
-                    selectedSegmentIndex === i ? "bg-primary/10 ring-1 ring-primary/30" : ""
+                  className={`flex flex-wrap items-center gap-2 rounded-md px-2 py-1.5 text-sm ${
+                    selectedSegmentIndex === i
+                      ? "bg-primary/10 ring-1 ring-primary/30"
+                      : ""
                   }`}
                 >
-                  <button
-                    type="button"
-                    className="min-w-0 flex-1 cursor-pointer text-left"
-                    onClick={() => setSelectedSegmentIndex(i)}
-                  >
-                    <span className="text-muted-foreground">
+                  <label className="flex cursor-pointer items-center gap-1 shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={selectedForBulk.has(i)}
+                      onChange={(e) =>
+                        setSelectedForBulk((prev) => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(i);
+                          else next.delete(i);
+                          return next;
+                        })
+                      }
+                      className="h-4 w-4 rounded border-input"
+                    />
+                    <span className="w-16 shrink-0 text-muted-foreground tabular-nums">
                       {formatTime(seg.startTime)}–{formatTime(seg.endTime)}
-                    </span>{" "}
-                    <span className="font-medium">{seg.pattern}</span>{" "}
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      {seg.teacherInstruction}
                     </span>
-                  </button>
+                  </label>
+                  <Select
+                    value={seg.pattern}
+                    onValueChange={(v) =>
+                      handleSegmentFieldChange(i, "pattern", v)
+                    }
+                    disabled={disabled}
+                  >
+                    <SelectTrigger className="h-8 w-[140px] shrink-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {patternList.map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {p}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    className="min-w-0 flex-1 max-w-[220px] h-8 text-sm"
+                    placeholder="Teacher instruction"
+                    value={seg.teacherInstruction ?? ""}
+                    onChange={(e) =>
+                      handleSegmentFieldChange(
+                        i,
+                        "teacherInstruction",
+                        e.target.value
+                      )
+                    }
+                    disabled={disabled}
+                  />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="shrink-0"
+                    className="h-8 w-8 shrink-0"
                     onClick={() => handleRemoveSegment(i)}
                     disabled={disabled}
                     aria-label="Remove segment"
@@ -718,9 +1102,26 @@ export function VideoLabeler({
           </div>
         )}
 
-        <Button onClick={handleSave} disabled={disabled}>
-          Save instructions
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {hasUnsavedChanges && (
+            <span className="text-xs text-amber-600 dark:text-amber-400">
+              Unsaved changes
+            </span>
+          )}
+          <Button onClick={handleSave} disabled={disabled || saving}>
+            {saving ? "Saving…" : "Save instructions"}
+          </Button>
+          {saveStatus === "success" && (
+            <span className="text-sm text-green-600">
+              Saved. Teacher instructions and patterns are stored.
+            </span>
+          )}
+          {saveStatus === "error" && saveError && (
+            <span className="text-sm text-destructive">
+              {saveError}. Sign in as admin if using RLS.
+            </span>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

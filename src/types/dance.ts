@@ -115,7 +115,10 @@ export interface DanceLibraryItem {
 
 /** Static 3D pose for move_registry.biomechanical_signature (one keyframe). */
 export interface BiomechanicalSignature {
-  joints?: Record<string, { x: number; y: number; z: number; visibility?: number }>;
+  joints?: Record<
+    string,
+    { x: number; y: number; z: number; visibility?: number }
+  >;
 }
 
 /** Target range (min/max) for a scalar metric. */
@@ -124,13 +127,23 @@ export interface TargetRange {
   max: number;
 }
 
-/** Stored in move_registry.biomechanical_profile: target ranges for key metrics. */
+/**
+ * Stored in move_registry.biomechanical_profile: target ranges for key metrics
+ * and mathematical curves from SignatureCalculator (computeMoveSignature).
+ */
 export interface BiomechanicalProfile {
+  /** Target ranges (min/max) for scalar metrics. */
   hip_tilt_max?: TargetRange;
   knee_flexion_avg?: TargetRange;
   arm_extension_avg?: TargetRange;
   torso_isolation_index?: TargetRange;
   rhythmic_sync_offset?: TargetRange;
+  /** Per-frame hip tilt curve (left_hip.y - right_hip.y); from computeMoveSignature. */
+  hip_tilt_curve?: number[];
+  /** Per-frame combined foot velocity; from computeMoveSignature. */
+  foot_velocity_curve?: number[];
+  /** Per-frame knee flexion (degrees, hip-knee-ankle); from computeMoveSignature. */
+  knee_flexion_curve?: number[];
 }
 
 /** Kinetic chain category for move classification. */

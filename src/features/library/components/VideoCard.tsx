@@ -32,6 +32,9 @@ export function VideoCard({ video, className }: VideoCardProps) {
           </h3>
           <p className="text-sm capitalize text-muted-foreground">
             {video.genre}
+            {video.bpm != null && (
+              <span className="ml-1.5">· {video.bpm} BPM</span>
+            )}
           </p>
         </CardHeader>
         <CardContent className="pt-0">

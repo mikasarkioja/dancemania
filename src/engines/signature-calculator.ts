@@ -1,15 +1,10 @@
 /**
  * Biomechanical signature from pose sequences: average joint angles,
  * velocity curves, and DTW-based similarity against move_registry.
- * Geometry helpers and generateMoveSignature produce a BiomechanicalProfile
- * (Math Second: pure, testable utilities for the Lab/Dictionary).
+ * computeMoveSignature is the single source of truth for move curves (Lab/Dictionary/Save to Registry).
  */
 
-import type {
-  PoseFrame,
-  BiomechanicalProfile,
-  Joint3D,
-} from "@/types/dance";
+import type { PoseFrame, Joint3D } from "@/types/dance";
 import { getMidHip, LEFT_HIP_KEY, RIGHT_HIP_KEY } from "./mid-hip";
 
 const LEFT_ANKLE_KEY = "left_ankle";
@@ -156,6 +151,7 @@ export interface MoveSignature {
   velocityCurves: VelocityCurve[];
   hipTiltCurve: number[]; // per-frame hip tilt (e.g. left_hip.y - right_hip.y or angle)
   footVelocityCurve: number[]; // per-frame combined foot velocity
+  kneeFlexionCurve: number[]; // per-frame knee flexion (degrees, hip-knee-ankle)
   frameCount: number;
 }
 
@@ -330,187 +326,8 @@ export function computeMoveSignature(
     velocityCurves: computeVelocityCurves(frames, partnerId),
     hipTiltCurve: computeHipTiltCurve(frames, partnerId),
     footVelocityCurve: computeFootVelocityCurve(frames, partnerId),
+    kneeFlexionCurve: computeKneeFlexionCurve(frames, partnerId),
     frameCount: list.length,
-  };
-}
-
-// --- BiomechanicalProfile from PoseFrame[] (normalized, testable) ---
-
-export interface GenerateMoveSignatureOptions {
-  /** Start time of the move in seconds (inclusive). */
-  startTimeSec?: number;
-  /** End time of the move in seconds (inclusive). */
-  endTimeSec?: number;
-  /** Filter to one partner. */
-  partnerId?: 0 | 1;
-}
-
-export interface GenerateMoveSignatureResult {
-  profile: BiomechanicalProfile;
-  /** Timestamps (seconds) of detected rhythmic pulse (local minima of mid_hip vertical velocity). */
-  rhythmicPulseTimes: number[];
-  /** Average torso height over the segment (used for normalization). */
-  torsoHeightAvg: number;
-}
-
-/**
- * Vertical velocity of mid_hip (y only) per frame; first frame is 0.
- */
-function midHipVerticalVelocityCurve(
-  frames: PoseFrame[],
-  partnerId?: 0 | 1
-): number[] {
-  const list =
-    partnerId != null
-      ? frames.filter((f) => f.partner_id === partnerId)
-      : frames;
-  if (list.length < 2) return list.length === 1 ? [0] : [];
-  const out: number[] = [0];
-  for (let i = 1; i < list.length; i++) {
-    const prev = getMidHip(list[i - 1].joints);
-    const curr = getMidHip(list[i].joints);
-    const dtSec = (list[i].timestamp - list[i - 1].timestamp) / 1000 || 0.001;
-    if (prev && curr) out.push((curr.y - prev.y) / dtSec);
-    else out.push(0);
-  }
-  return out;
-}
-
-/**
- * Indices where value is a local minimum (strictly less than both neighbors).
- */
-function localMinimaIndices(values: number[]): number[] {
-  const out: number[] = [];
-  for (let i = 1; i < values.length - 1; i++) {
-    if (values[i] < values[i - 1] && values[i] < values[i + 1]) out.push(i);
-  }
-  return out;
-}
-
-/**
- * Transform a sequence of PoseFrame data into a BiomechanicalProfile.
- * - Filters frames for the move duration (startTimeSec, endTimeSec) and optional partnerId.
- * - Calculates average and max for knee_flexion, hip_tilt, arm_extension (angles in degrees).
- * - Detects Rhythmic Pulse as local minima of mid_hip vertical velocity (bounce/tap).
- * - All angles in degrees; spatial measurements normalized by torso_height (mid-shoulder to mid-hip).
- */
-export function generateMoveSignature(
-  frames: PoseFrame[],
-  options: GenerateMoveSignatureOptions = {}
-): GenerateMoveSignatureResult {
-  const { startTimeSec, endTimeSec, partnerId } = options;
-  let list =
-    partnerId != null
-      ? frames.filter((f) => f.partner_id === partnerId)
-      : frames;
-
-  if (startTimeSec != null || endTimeSec != null) {
-    const tMin = startTimeSec ?? 0;
-    const tMax = endTimeSec ?? Infinity;
-    list = list.filter((f) => {
-      const t = f.timestamp / 1000;
-      return t >= tMin && t <= tMax;
-    });
-  }
-
-  if (list.length === 0) {
-    return {
-      profile: {},
-      rhythmicPulseTimes: [],
-      torsoHeightAvg: 1,
-    };
-  }
-
-  const torsoHeights = list.map((f) => getTorsoHeight(f.joints));
-  const torsoHeightAvg =
-    torsoHeights.reduce((a, b) => a + b, 0) / torsoHeights.length || 1;
-
-  // Knee flexion: from metrics or compute (hip-knee-ankle angle)
-  const kneeFlexions: number[] = [];
-  for (const f of list) {
-    const angles = f.metrics?.joint_angles ?? {};
-    const leftKnee = angles["left_knee_angle"];
-    const rightKnee = angles["right_knee_angle"];
-    if (typeof leftKnee === "number" && typeof rightKnee === "number") {
-      kneeFlexions.push((leftKnee + rightKnee) / 2);
-    } else {
-      const lh = f.joints[LEFT_HIP_KEY];
-      const lk = f.joints[LEFT_KNEE_KEY];
-      const la = f.joints[LEFT_ANKLE_KEY];
-      const rh = f.joints[RIGHT_HIP_KEY];
-      const rk = f.joints[RIGHT_KNEE_KEY];
-      const ra = f.joints[RIGHT_ANKLE_KEY];
-      if (lh && lk && la)
-        kneeFlexions.push(
-          calculateJointAngle(toPoint3D(lh), toPoint3D(lk), toPoint3D(la))
-        );
-      if (rh && rk && ra)
-        kneeFlexions.push(
-          calculateJointAngle(toPoint3D(rh), toPoint3D(rk), toPoint3D(ra))
-        );
-    }
-  }
-  const kneeMin = kneeFlexions.length ? Math.min(...kneeFlexions) : 0;
-  const kneeMax = kneeFlexions.length ? Math.max(...kneeFlexions) : 0;
-
-  // Hip tilt: pelvic tilt vertical delta, normalized by torso height (then we store in degrees for angle; for delta we normalize)
-  const hipTiltsRaw: number[] = [];
-  for (const f of list) {
-    const l = f.joints[LEFT_HIP_KEY];
-    const r = f.joints[RIGHT_HIP_KEY];
-    if (l && r) {
-      const { verticalDelta } = calculatePelvicTilt(
-        toPoint3D(l),
-        toPoint3D(r)
-      );
-      const normDelta = torsoHeightAvg > 0 ? verticalDelta / torsoHeightAvg : 0;
-      hipTiltsRaw.push(normDelta);
-    }
-  }
-  const hipTiltMin = hipTiltsRaw.length ? Math.min(...hipTiltsRaw) : 0;
-  const hipTiltMax = hipTiltsRaw.length ? Math.max(...hipTiltsRaw) : 0;
-
-  // Arm extension: shoulder-elbow-wrist angle (degrees); larger = more extended
-  const armExtensions: number[] = [];
-  for (const f of list) {
-    const ls = f.joints[LEFT_SHOULDER_KEY];
-    const le = f.joints[LEFT_ELBOW_KEY];
-    const lw = f.joints[LEFT_WRIST_KEY];
-    const rs = f.joints[RIGHT_SHOULDER_KEY];
-    const re = f.joints[RIGHT_ELBOW_KEY];
-    const rw = f.joints[RIGHT_WRIST_KEY];
-    if (ls && le && lw)
-      armExtensions.push(
-        calculateJointAngle(toPoint3D(ls), toPoint3D(le), toPoint3D(lw))
-      );
-    if (rs && re && rw)
-      armExtensions.push(
-        calculateJointAngle(toPoint3D(rs), toPoint3D(re), toPoint3D(rw))
-      );
-  }
-  const armMin = armExtensions.length ? Math.min(...armExtensions) : 0;
-  const armMax = armExtensions.length ? Math.max(...armExtensions) : 0;
-
-  // Rhythmic pulse: local minima of mid_hip vertical velocity
-  const midHipVelY = midHipVerticalVelocityCurve(list, undefined);
-  const pulseIndices = localMinimaIndices(midHipVelY);
-  const rhythmicPulseTimes = pulseIndices.map((i) => list[i].timestamp / 1000);
-
-  const profile: BiomechanicalProfile = {};
-  if (kneeFlexions.length) {
-    profile.knee_flexion_avg = { min: kneeMin, max: kneeMax };
-  }
-  if (hipTiltsRaw.length) {
-    profile.hip_tilt_max = { min: hipTiltMin, max: hipTiltMax };
-  }
-  if (armExtensions.length) {
-    profile.arm_extension_avg = { min: armMin, max: armMax };
-  }
-
-  return {
-    profile,
-    rhythmicPulseTimes,
-    torsoHeightAvg,
   };
 }
 

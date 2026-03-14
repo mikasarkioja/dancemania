@@ -26,6 +26,7 @@ export interface ContinueVideo {
   difficulty: string;
   instructions: unknown[];
   slug: string | null;
+  bpm: number | null;
 }
 
 export interface MoveOfTheDay {
@@ -165,7 +166,10 @@ export function DashboardView({
                         borderRadius: 12,
                         border: "1px solid rgba(0,0,0,0.08)",
                       }}
-                      formatter={(value: unknown) => [value != null ? `${value}%` : "", "Harmony"]}
+                      formatter={(value: unknown) => [
+                        value != null ? `${value}%` : "",
+                        "Harmony",
+                      ]}
                     />
                     <Area
                       type="monotone"
@@ -214,6 +218,9 @@ export function DashboardView({
                         </h3>
                         <p className="mt-0.5 text-xs capitalize text-muted-foreground">
                           {video.genre}
+                          {video.bpm != null && (
+                            <span className="ml-1">· {video.bpm} BPM</span>
+                          )}
                         </p>
                       </div>
                     </div>

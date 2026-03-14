@@ -29,5 +29,9 @@ Thumbs.db
 # Supabase CLI local state
 supabase/.temp/
 
+# Script output dirs (compress, etc.)
+compressed/
+videos-to-compress/
+
 # Optional: uncomment if you want to keep skills only locally
 # .agents/
