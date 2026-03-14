@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import type { DanceInstructions, MoveSegment, MotionDNA } from "@/types/dance";
+import type { DanceInstructions, MoveSegment, MotionDNA, SuggestedLabel } from "@/types/dance";
 import type { SuggestedSegment } from "@/engines/segmentation";
 import { runSegmentationAsync } from "@/engines/runSegmentationWorker";
 import {
@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Square, Plus, Trash2, Wand2, Check } from "lucide-react";
+import { Play, Square, Plus, Trash2, Wand2, Check, Sparkles, X } from "lucide-react";
 
 const PATTERNS = [
   "Box-step",
@@ -51,6 +51,12 @@ export interface VideoLabelerProps {
   motionDna?: MotionDNA | null;
   /** Beat timestamps (seconds) for beat-snap; from metadata.beat_timestamps. */
   beatTimestamps?: number[];
+  /** Registry-based suggestions (Scanner); show ghost blocks and Approve/Reject. */
+  suggestedLabels?: SuggestedLabel[];
+  /** Run Scanner (compare motion_dna to move_registry), then refresh. */
+  onRunAutoLabel?: () => Promise<{ ok: boolean; error?: string; suggestedLabels?: SuggestedLabel[] }>;
+  onApproveSuggestion?: (s: SuggestedLabel) => Promise<{ ok: boolean; error?: string }>;
+  onRejectSuggestion?: (s: SuggestedLabel) => Promise<{ ok: boolean; error?: string }>;
 }
 
 /**
@@ -61,11 +67,16 @@ const REVIEW_NEEDED_THRESHOLD = 0.6;
 
 export function VideoLabeler({
   videoUrl,
+  videoId,
   instructions,
   onSave,
   disabled = false,
   motionDna = null,
   beatTimestamps = [],
+  suggestedLabels = [],
+  onRunAutoLabel,
+  onApproveSuggestion,
+  onRejectSuggestion,
 }: VideoLabelerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [duration, setDuration] = useState(0);
@@ -77,6 +88,7 @@ export function VideoLabeler({
   const [teacherInstruction, setTeacherInstruction] = useState("");
   const [suggestions, setSuggestions] = useState<SuggestedSegment[]>([]);
   const [scanning, setScanning] = useState(false);
+  const [autoLabeling, setAutoLabeling] = useState(false);
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
   const beats = beatTimestamps.length > 0 ? beatTimestamps : null;
 
@@ -162,6 +174,16 @@ export function VideoLabeler({
       setScanning(false);
     }
   }, [motionDna]);
+
+  const handleRunAutoLabel = useCallback(async () => {
+    if (!onRunAutoLabel) return;
+    setAutoLabeling(true);
+    try {
+      await onRunAutoLabel();
+    } finally {
+      setAutoLabeling(false);
+    }
+  }, [onRunAutoLabel]);
 
   const handleConfirmSuggestion = useCallback((index: number) => {
     const sug = suggestions[index];
@@ -264,7 +286,7 @@ export function VideoLabeler({
             </span>
           </div>
           {/* Timeline strip: beat grid + segment markers */}
-          {duration > 0 && (segments.length > 0 || suggestions.length > 0 || (beats && beats.length > 0)) && (
+          {duration > 0 && (segments.length > 0 || suggestions.length > 0 || suggestedLabels.length > 0 || (beats && beats.length > 0)) && (
             <div className="space-y-1">
               {/* Beat grid (light grey vertical lines) + segment blocks */}
               {(segments.length > 0 || (beats && beats.length > 0)) && (
@@ -295,7 +317,59 @@ export function VideoLabeler({
                   ))}
                 </div>
               )}
-              {/* Ghost blocks (suggestions) */}
+              {/* Registry suggestions (Run auto label) */}
+              {duration > 0 && suggestedLabels.length > 0 && (
+                <div className="relative h-6 w-full overflow-visible rounded bg-secondary/60">
+                  {suggestedLabels.map((s, i) => (
+                    <div
+                      key={i}
+                      className="absolute top-0 flex h-full items-center gap-1 rounded border border-amber-500/60 bg-amber-500/25 px-1"
+                      style={{
+                        left: `${(s.startTime / duration) * 100}%`,
+                        width: `${((s.endTime - s.startTime) / duration) * 100}%`,
+                        minWidth: "80px",
+                      }}
+                      title={`${s.move_name}${s.similarity != null ? ` (${(s.similarity * 100).toFixed(0)}%)` : ""}`}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-foreground">
+                        {s.move_name}
+                      </span>
+                      {s.similarity != null && (
+                        <span className="shrink-0 text-[9px] text-muted-foreground">
+                          {(s.similarity * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {onApproveSuggestion && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 shrink-0"
+                          onClick={() => onApproveSuggestion(s)}
+                          disabled={disabled}
+                          aria-label="Approve"
+                        >
+                          <Check className="h-3 w-3" />
+                        </Button>
+                      )}
+                      {onRejectSuggestion && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 shrink-0"
+                          onClick={() => onRejectSuggestion(s)}
+                          disabled={disabled}
+                          aria-label="Reject"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Ghost blocks (Magic Wand suggestions) */}
               {duration > 0 && suggestions.length > 0 && (
                 <div className="relative h-6 w-full overflow-visible rounded bg-secondary/60">
                   {suggestions.map((sug, i) => {
@@ -417,6 +491,18 @@ export function VideoLabeler({
             >
               <Wand2 className="mr-2 h-4 w-4" />
               {scanning ? "Scanning…" : "Magic Wand"}
+            </Button>
+          )}
+          {onRunAutoLabel && videoId && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleRunAutoLabel}
+              disabled={disabled || autoLabeling}
+            >
+              <Sparkles className="mr-2 h-4 w-4" />
+              {autoLabeling ? "Running…" : "Run auto label"}
             </Button>
           )}
         </div>

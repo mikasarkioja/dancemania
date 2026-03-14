@@ -224,10 +224,20 @@ export function VideoReviewer({
               {displayDna?.frames?.length ? (
                 <canvas
                   ref={canvasRef}
-                  className="pointer-events-none absolute left-0 top-0 object-contain"
+                  className="pointer-events-none absolute left-0 top-0 h-full w-full object-contain"
                   style={{ width: "100%", height: "100%" }}
+                  aria-hidden
                 />
-              ) : null}
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 px-4 py-6 text-center">
+                  <p className="text-sm font-medium text-white drop-shadow-md">
+                    No skeleton data
+                  </p>
+                  <p className="max-w-md text-xs text-white/90 drop-shadow">
+                    This video has no <code className="rounded bg-white/20 px-1">motion_dna</code>. Run pose extraction to see the skeleton overlay and for this video to appear in Dictionary Lab.
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

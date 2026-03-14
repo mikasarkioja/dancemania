@@ -28,9 +28,12 @@ export default async function AdminDictionaryPage() {
       <h1 className="mb-2 text-2xl font-semibold">
         Biomechanical dictionary (Lab)
       </h1>
-      <p className="mb-6 text-muted-foreground">
+      <p className="mb-2 text-muted-foreground">
         View ideal move 3D playback and hip-tilt / foot-velocity over an 8-count
         measure.
+      </p>
+      <p className="mb-6 text-sm text-muted-foreground">
+        Only videos with <strong>motion_dna</strong> appear here. Populate pose data (e.g. run your pose extraction pipeline or script that writes <code className="rounded bg-muted px-1">motion_dna</code> to <code className="rounded bg-muted px-1">dance_library</code>) for videos you want to see in Review with skeleton overlay and here in Dictionary Lab. Approving in Admin Review only sets status to &quot;published&quot;; it does not add motion_dna.
       </p>
       <DictionaryLab videos={videos} />
     </main>

@@ -139,6 +139,15 @@ export type KineticChainCategory =
   | "footwork"
   | "partner_connection";
 
+/** Scanner suggestion for one segment: not yet in video_moves. */
+export interface SuggestedLabel {
+  startTime: number;
+  endTime: number;
+  move_id: string;
+  move_name: string;
+  similarity?: number;
+}
+
 /** One row from move_registry (encyclopedia entry). */
 export interface MoveRegistryEntry {
   id: string;

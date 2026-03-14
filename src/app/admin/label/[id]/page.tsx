@@ -12,13 +12,14 @@ export default async function AdminLabelVideoPage({
   const supabase = await createClient();
   const { data: row, error } = await supabase
     .from("dance_library")
-    .select("id, slug, title, video_url, instructions, motion_dna")
+    .select("id, slug, title, video_url, instructions, motion_dna, suggested_labels")
     .eq("id", id)
     .single();
 
   if (error || !row) notFound();
 
   const instructions = Array.isArray(row.instructions) ? row.instructions : [];
+  const suggestedLabels = Array.isArray(row.suggested_labels) ? row.suggested_labels : [];
 
   return (
     <main className="container py-8">
@@ -33,6 +34,7 @@ export default async function AdminLabelVideoPage({
         title={row.title}
         initialInstructions={instructions}
         motionDna={row.motion_dna ?? null}
+        suggestedLabels={suggestedLabels}
       />
     </main>
   );

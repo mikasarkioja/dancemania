@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { DanceInstructions, MotionDNA } from "@/types/dance";
+import type { DanceInstructions, MotionDNA, SuggestedLabel } from "@/types/dance";
 import { VideoLabeler } from "@/features/admin";
+import { runAutoLabel, approveSuggestedLabel, rejectSuggestedLabel } from "@/features/admin/actions/label-actions";
 
 export interface VideoLabelerWrapperProps {
   videoId: string;
@@ -11,6 +13,7 @@ export interface VideoLabelerWrapperProps {
   title: string;
   initialInstructions: DanceInstructions;
   motionDna?: MotionDNA | null;
+  suggestedLabels?: SuggestedLabel[];
 }
 
 export function VideoLabelerWrapper({
@@ -19,7 +22,10 @@ export function VideoLabelerWrapper({
   title,
   initialInstructions,
   motionDna = null,
+  suggestedLabels = [],
 }: VideoLabelerWrapperProps) {
+  const router = useRouter();
+
   const handleSave = useCallback(
     async (instructions: DanceInstructions) => {
       const supabase = createClient();
@@ -29,6 +35,40 @@ export function VideoLabelerWrapper({
         .eq("id", videoId);
     },
     [videoId]
+  );
+
+  const handleRunAutoLabel = useCallback(async () => {
+    const result = await runAutoLabel(videoId);
+    if (result.ok) router.refresh();
+    return result;
+  }, [videoId, router]);
+
+  const handleApproveSuggestion = useCallback(
+    async (s: SuggestedLabel) => {
+      const result = await approveSuggestedLabel(
+        videoId,
+        s.move_id,
+        s.startTime,
+        s.endTime
+      );
+      if (result.ok) router.refresh();
+      return result;
+    },
+    [videoId, router]
+  );
+
+  const handleRejectSuggestion = useCallback(
+    async (s: SuggestedLabel) => {
+      const result = await rejectSuggestedLabel(
+        videoId,
+        s.move_id,
+        s.startTime,
+        s.endTime
+      );
+      if (result.ok) router.refresh();
+      return result;
+    },
+    [videoId, router]
   );
 
   return (
@@ -41,6 +81,10 @@ export function VideoLabelerWrapper({
         onSave={handleSave}
         motionDna={motionDna}
         beatTimestamps={motionDna?.metadata?.beat_timestamps ?? undefined}
+        suggestedLabels={suggestedLabels}
+        onRunAutoLabel={handleRunAutoLabel}
+        onApproveSuggestion={handleApproveSuggestion}
+        onRejectSuggestion={handleRejectSuggestion}
       />
     </div>
   );
