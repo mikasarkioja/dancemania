@@ -178,3 +178,48 @@ export async function saveMoveToRegistry(
 
   return { success: true };
 }
+
+export interface SaveToRegistryFromProfileParams {
+  profile: BiomechanicalProfile;
+  name: string;
+  category: string;
+  role: "Leader" | "Follower" | "Both";
+  description?: string | null;
+  genre?: "salsa" | "bachata" | "other" | null;
+}
+
+/**
+ * Server action for RegistryForm: persist a pre-computed BiomechanicalProfile
+ * (e.g. from Dictionary Lab) as a Gold Standard move. Use when the client
+ * already has the profile and only needs to submit metadata.
+ */
+export async function saveMoveToRegistryFromProfile(
+  params: SaveToRegistryFromProfileParams
+): Promise<SaveToRegistryResult> {
+  const { profile, name, category, role, description = null, genre } = params;
+
+  const validation = validateBiomechanicalProfile(profile);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const supabase = await createClient();
+  const insertPayload: Record<string, unknown> = {
+    name: name.trim(),
+    category: category.trim() || "General",
+    role,
+    description: description?.trim() || null,
+    biomechanical_profile: profile,
+    status: "approved",
+  };
+  if (genre) {
+    insertPayload.genre = genre;
+  }
+
+  const { error } = await supabase.from("move_registry").insert(insertPayload);
+
+  if (error) {
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}

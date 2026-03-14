@@ -1,10 +1,10 @@
 "use client";
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import type { MotionDNA, PoseFrame } from "@/types/dance";
+import type { BiomechanicalProfile, MotionDNA, PoseFrame } from "@/types/dance";
 import { drawSkeleton } from "@/lib/utils/skeleton-canvas";
 import { computeMoveSignature } from "@/engines/signature-calculator";
-import { saveMoveToRegistry } from "@/features/admin/actions/registry-actions";
+import RegistryForm from "@/features/admin/components/RegistryForm";
 import {
   LineChart,
   Line,
@@ -17,8 +17,6 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -26,8 +24,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 
 const FPS = 30;
 const LEADER_COLOR = "#3b82f6";
@@ -46,9 +42,6 @@ export interface DictionaryLabProps {
 export function DictionaryLab({ videos }: DictionaryLabProps) {
   const [selectedVideoId, setSelectedVideoId] = useState<string>("");
   const [playbackFrameIndex, setPlaybackFrameIndex] = useState(0);
-  const [moveName, setMoveName] = useState("");
-  const [category, setCategory] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const selectedVideo = useMemo(
     () => videos.find((v) => v.id === selectedVideoId),
@@ -65,6 +58,15 @@ export function DictionaryLab({ videos }: DictionaryLabProps) {
     if (!motionDna?.frames?.length) return null;
     return computeMoveSignature(motionDna.frames, 0);
   }, [motionDna]);
+
+  const biomechanicalProfile = useMemo((): BiomechanicalProfile | null => {
+    if (!signature) return null;
+    return {
+      hip_tilt_curve: signature.hipTiltCurve,
+      foot_velocity_curve: signature.footVelocityCurve,
+      knee_flexion_curve: signature.kneeFlexionCurve,
+    };
+  }, [signature]);
 
   const chartData = useMemo(() => {
     if (!signature) return [];
@@ -112,34 +114,12 @@ export function DictionaryLab({ videos }: DictionaryLabProps) {
     return () => clearInterval(t);
   }, [frames.length]);
 
-  const durationSec = useMemo(() => {
-    if (frames.length === 0) return 0;
-    const lastTs = frames[frames.length - 1]?.timestamp ?? 0;
-    return lastTs >= 1e4 ? lastTs / 1000 : lastTs;
-  }, [frames]);
-
-  const handleSaveToRegistry = async () => {
-    if (!selectedVideo?.id || !moveName.trim()) return;
-    setIsSaving(true);
-    try {
-      const result = await saveMoveToRegistry({
-        videoId: selectedVideo.id,
-        startTime: 0,
-        endTime: durationSec || 999,
-        label: moveName.trim(),
-        category: category.trim() || "General",
-      });
-      if (result.success) {
-        toast.success(
-          `'${moveName.trim()}' has been added to the Gold Standard Registry! ✨`
-        );
-      } else {
-        toast.error(result.error ?? "Could not save to registry.");
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
+  const appGenre =
+    selectedVideo?.genre === "salsa" ||
+    selectedVideo?.genre === "bachata" ||
+    selectedVideo?.genre === "other"
+      ? selectedVideo.genre
+      : null;
 
   if (!videos.length) {
     return (
@@ -243,53 +223,21 @@ export function DictionaryLab({ videos }: DictionaryLabProps) {
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Save to Registry</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Compute the move signature (hip tilt, foot velocity, knee flexion
-            curves) and add this video as a gold standard to the move registry.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="move-name">Move name</Label>
-              <Input
-                id="move-name"
-                placeholder="e.g. Basic Step, Enchufla"
-                value={moveName}
-                onChange={(e) => setMoveName(e.target.value)}
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="category">Category</Label>
-              <Input
-                id="category"
-                placeholder="e.g. Footwork, General"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="rounded-xl"
-              />
-            </div>
-          </div>
-          <Button
-            onClick={handleSaveToRegistry}
-            disabled={!signature || !moveName.trim() || isSaving}
-            className="rounded-xl"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving…
-              </>
-            ) : (
-              "Save to Registry"
-            )}
-          </Button>
-        </CardContent>
-      </Card>
+      {biomechanicalProfile ? (
+        <RegistryForm
+          key={selectedVideoId}
+          profile={biomechanicalProfile}
+          genre={appGenre}
+        />
+      ) : (
+        <Card>
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+            No motion data for the selected video. Process the video first to
+            compute the signature, then you can save to the Gold Standard
+            Registry.
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
