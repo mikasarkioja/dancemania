@@ -47,6 +47,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "cross-env": "^7.0.3",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.0.0",
     "eslint-config-prettier": "^9.1.0",
@@ -64,7 +65,7 @@
       "prettier --write"
     ],
     "*.{js,jsx,ts,tsx}": [
-      "eslint --fix"
+      "cross-env ESLINT_USE_FLAT_CONFIG=false eslint --fix"
     ]
   }
 }

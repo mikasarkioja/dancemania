@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Play, Square, Plus, Trash2, Wand2, Check, Sparkles, X } from "lucide-react";
+import { Play, Square, Plus, Trash2, Wand2, Check, Sparkles, X, SplitSquareVertical, Music2 } from "lucide-react";
 
 const PATTERNS = [
   "Box-step",
@@ -90,6 +90,7 @@ export function VideoLabeler({
   const [scanning, setScanning] = useState(false);
   const [autoLabeling, setAutoLabeling] = useState(false);
   const [selectedSegmentIndex, setSelectedSegmentIndex] = useState<number | null>(null);
+  const [breakpoints, setBreakpoints] = useState<number[]>([]);
   const beats = beatTimestamps.length > 0 ? beatTimestamps : null;
 
   const snap = useCallback(
@@ -100,6 +101,13 @@ export function VideoLabeler({
   useEffect(() => {
     setSegments(instructions);
   }, [instructions]);
+
+  useEffect(() => {
+    if (selectedSegmentIndex != null && segments[selectedSegmentIndex]) {
+      setPattern(segments[selectedSegmentIndex].pattern);
+      setTeacherInstruction(segments[selectedSegmentIndex].teacherInstruction ?? "");
+    }
+  }, [selectedSegmentIndex, segments]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -158,7 +166,21 @@ export function VideoLabeler({
 
   const handleRemoveSegment = useCallback((index: number) => {
     setSegments((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+    if (selectedSegmentIndex === index) setSelectedSegmentIndex(null);
+    else if (selectedSegmentIndex != null && selectedSegmentIndex > index)
+      setSelectedSegmentIndex(selectedSegmentIndex - 1);
+  }, [selectedSegmentIndex]);
+
+  const handleUpdateSegment = useCallback(() => {
+    if (selectedSegmentIndex == null || selectedSegmentIndex >= segments.length) return;
+    setSegments((prev) =>
+      prev.map((s, i) =>
+        i === selectedSegmentIndex
+          ? { ...s, pattern, teacherInstruction: teacherInstruction.trim() || pattern }
+          : s
+      )
+    );
+  }, [selectedSegmentIndex, segments.length, pattern, teacherInstruction]);
 
   const handleSave = useCallback(() => {
     onSave(segments);
@@ -184,6 +206,65 @@ export function VideoLabeler({
       setAutoLabeling(false);
     }
   }, [onRunAutoLabel]);
+
+  const BREAKPOINT_MIN_GAP = 0.5;
+  const handleAddBreakpoint = useCallback(() => {
+    const t = videoRef.current?.currentTime ?? currentTime;
+    const snapped = snap(t);
+    setBreakpoints((prev) => {
+      const next = [...prev, snapped].sort((a, b) => a - b);
+      return next.filter((v, i) => i === 0 || v - next[i - 1] >= BREAKPOINT_MIN_GAP);
+    });
+  }, [currentTime, snap]);
+
+  const handleRemoveBreakpoint = useCallback((index: number) => {
+    setBreakpoints((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const handleSuggestBreakpointsFromBeats = useCallback(() => {
+    if (!beats?.length || duration <= 0) return;
+    const everyN = 4;
+    const suggested: number[] = [];
+    for (let i = 0; i < beats.length; i += everyN) {
+      const t = beats[i];
+      if (t >= 0 && t <= duration) suggested.push(Math.round(t * 100) / 100);
+    }
+    setBreakpoints((prev) => {
+      const merged = [...prev, ...suggested].sort((a, b) => a - b);
+      return merged.filter((v, i) => i === 0 || v - merged[i - 1] >= BREAKPOINT_MIN_GAP);
+    });
+  }, [beats, duration]);
+
+  const breakpointsToSegments = useCallback(
+    (bps: number[], dur: number): MoveSegment[] => {
+      if (dur <= 0) return [];
+      const sorted = [...bps].filter((t) => t > 0 && t < dur).sort((a, b) => a - b);
+      const times = [0, ...sorted, dur];
+      const out: MoveSegment[] = [];
+      for (let i = 0; i < times.length - 1; i++) {
+        const start = times[i];
+        const end = times[i + 1];
+        if (end - start < 0.1) continue;
+        out.push({
+          startTime: Math.round(start * 100) / 100,
+          endTime: Math.round(end * 100) / 100,
+          pattern: "Other",
+          teacherInstruction: "",
+        });
+      }
+      return out;
+    },
+    []
+  );
+
+  const handleConvertBreakpointsToSegments = useCallback(() => {
+    if (duration <= 0) return;
+    const newSegments = breakpointsToSegments(breakpoints, duration);
+    if (newSegments.length === 0) return;
+    setSegments((prev) => [...prev, ...newSegments].sort((a, b) => a.startTime - b.startTime));
+    setBreakpoints([]);
+    setSelectedSegmentIndex(null);
+  }, [breakpoints, duration, breakpointsToSegments]);
 
   const handleConfirmSuggestion = useCallback((index: number) => {
     const sug = suggestions[index];
@@ -249,8 +330,7 @@ export function VideoLabeler({
       <CardHeader>
         <CardTitle>Move labeling</CardTitle>
         <CardDescription>
-          Mark move segments and add pattern + teacher instruction for overlay
-          text during playback.
+          Step 1: Set breakpoints between moves (one click per boundary). Step 2: Convert to segments and label with pattern + instruction.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -286,22 +366,30 @@ export function VideoLabeler({
             </span>
           </div>
           {/* Timeline strip: beat grid + segment markers */}
-          {duration > 0 && (segments.length > 0 || suggestions.length > 0 || suggestedLabels.length > 0 || (beats && beats.length > 0)) && (
+          {duration > 0 && (segments.length > 0 || breakpoints.length > 0 || suggestions.length > 0 || suggestedLabels.length > 0 || (beats && beats.length > 0)) && (
             <div className="space-y-1">
               {/* Beat grid (light grey vertical lines) + segment blocks */}
-              {(segments.length > 0 || (beats && beats.length > 0)) && (
+              {(segments.length > 0 || breakpoints.length > 0 || (beats && beats.length > 0)) && (
                 <div className="relative h-6 w-full overflow-hidden rounded bg-secondary">
                   {beats &&
                     beats
                       .filter((t) => t >= 0 && t <= duration)
                       .map((t, i) => (
                         <div
-                          key={i}
+                          key={`beat-${i}`}
                           className="absolute top-0 h-full w-px bg-muted-foreground/25"
                           style={{ left: `${(t / duration) * 100}%` }}
                           aria-hidden
                         />
                       ))}
+                  {breakpoints.map((t, i) => (
+                    <div
+                      key={`bp-${i}`}
+                      className="absolute top-0 h-full w-0.5 bg-amber-500"
+                      style={{ left: `${(t / duration) * 100}%` }}
+                      title={formatTime(t)}
+                    />
+                  ))}
                   {segments.map((seg, i) => (
                     <motion.div
                       key={i}
@@ -412,6 +500,70 @@ export function VideoLabeler({
           )}
         </div>
 
+        {/* Step 1: Breakpoints (one click per boundary) */}
+        <div className="space-y-2 rounded-md border border-dashed border-muted-foreground/30 bg-muted/20 p-3">
+          <Label className="text-muted-foreground">Step 1 — Set breakpoints</Label>
+          <p className="text-xs text-muted-foreground">
+            Scrub to each boundary between moves and click once. With beat data, you can suggest breakpoints every 4 beats (e.g. Bachata &quot;1, 2, 3, 4&quot;).
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              onClick={handleAddBreakpoint}
+              disabled={disabled}
+            >
+              <SplitSquareVertical className="mr-2 h-4 w-4" />
+              Add breakpoint here
+            </Button>
+            {beats && beats.length >= 4 && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleSuggestBreakpointsFromBeats}
+                disabled={disabled}
+              >
+                <Music2 className="mr-2 h-4 w-4" />
+                Suggest from beats (every 4)
+              </Button>
+            )}
+            {breakpoints.length > 0 && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={handleConvertBreakpointsToSegments}
+                disabled={disabled}
+              >
+                Convert to segments ({breakpointsToSegments(breakpoints, duration).length})
+              </Button>
+            )}
+          </div>
+          {breakpoints.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {breakpoints.map((t, i) => (
+                <span
+                  key={i}
+                  className="inline-flex items-center gap-0.5 rounded bg-muted px-2 py-0.5 text-xs"
+                >
+                  {formatTime(t)}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveBreakpoint(i)}
+                    disabled={disabled}
+                    className="ml-1 rounded p-0.5 hover:bg-muted-foreground/20"
+                    aria-label="Remove breakpoint"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Start / End Move + Pattern + Instruction */}
         <div className="flex flex-wrap items-end gap-2">
           <Button
@@ -471,16 +623,28 @@ export function VideoLabeler({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleAddSegment}
-            disabled={disabled || startTime == null || endTime == null}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Add segment
-          </Button>
+          {selectedSegmentIndex != null ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleUpdateSegment}
+              disabled={disabled}
+            >
+              Update segment
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleAddSegment}
+              disabled={disabled || startTime == null || endTime == null}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Add segment
+            </Button>
+          )}
           {motionDna?.frames?.length != null && motionDna.frames.length > 0 && (
             <Button
               type="button"
