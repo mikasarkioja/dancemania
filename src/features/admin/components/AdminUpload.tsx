@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { compressVideoForUpload } from "@/lib/utils/video-processor";
 import type {
@@ -10,6 +10,7 @@ import type {
   TrackingSeeds,
 } from "@/types/dance";
 import { PARTNER_LEAD, PARTNER_FOLLOWER } from "@/types/dance";
+import { useAppGenre } from "@/contexts/GenreContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,9 +51,10 @@ function slugify(text: string): string {
 }
 
 export function AdminUpload() {
+  const { genre: appGenre } = useAppGenre();
   const [title, setTitle] = useState("");
   const [slug, setSlug] = useState("");
-  const [genre, setGenre] = useState<DanceGenre>("salsa");
+  const [genre, setGenre] = useState<DanceGenre>(appGenre);
   const [difficulty, setDifficulty] = useState<Difficulty>("beginner");
   const [bpm, setBpm] = useState("");
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -65,6 +67,16 @@ export function AdminUpload() {
   const [compressProgress, setCompressProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Keep form genre in sync with master switch (Salsa/Bachata in header)
+  useEffect(() => {
+    setGenre(appGenre);
+  }, [appGenre]);
+
+  // Only show the current app genre + Other in the dropdown (no cross-selection)
+  const genreOptions = GENRES.filter(
+    (g) => g.value === appGenre || g.value === "other"
+  );
 
   const handleTitleChange = (value: string) => {
     setTitle(value);
@@ -220,13 +232,17 @@ export function AdminUpload() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {GENRES.map((g) => (
+              {genreOptions.map((g) => (
                 <SelectItem key={g.value} value={g.value}>
                   {g.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-muted-foreground">
+            Matches the Salsa/Bachata toggle in the header. Switch there to add
+            videos for the other genre.
+          </p>
         </div>
 
         <div className="space-y-2">

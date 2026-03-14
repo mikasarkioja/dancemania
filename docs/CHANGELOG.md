@@ -15,6 +15,7 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 - **`move_registry.genre`**: Migration `20250121000011_move_registry_genre.sql` adds optional `genre` (salsa | bachata | other) and index. Save to Registry now sets genre from the source video.
 - **Genre context & server**: `src/lib/genre-server.ts` and `src/contexts/` (e.g. genre provider/cookie) for Salsa/Bachata mode. Header genre switcher and layout; dashboard, library, encyclopedia, admin dictionary/label/review and move_registry filters scoped by genre where applicable. Documented in `docs/GENRE_MODE.md`.
+- **Admin upload form sync with master switch**: `AdminUpload.tsx` now reads the global genre from `useAppGenre()` (same as the header Salsa/Bachata toggle). The form’s Genre field defaults to and stays in sync with the master switch; the Genre dropdown only shows the current app genre plus “Other” (e.g. when Bachata is selected, only Bachata and Other are available). Helper text added: “Matches the Salsa/Bachata toggle in the header. Switch there to add videos for the other genre.”
 
 ### Docs & UX
 
