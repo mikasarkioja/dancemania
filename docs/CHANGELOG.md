@@ -4,6 +4,97 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Boutique mobile & MAL audit (2025-03)
+
+### Viewport & browser bar (svh)
+
+- **Layouts:** Replaced `min-h-screen` / `100vh` with `min-h-svh` (small viewport height) in `layout.tsx`, `AssessmentFlow.tsx`, `DashboardView.tsx`, `onboarding/page.tsx`, `not-found.tsx`, and `globals.css` (body) so the mobile browser address bar does not overlap primary actions.
+- **Practice:** `PracticeCapture` and practice page use `min-h-svh` and `pb-safe` / `pt-safe` for consistent viewport behavior.
+
+### Safe areas (notch & home indicator)
+
+- **Utilities:** Added `.pt-safe` and `.pb-safe` in `globals.css` using `env(safe-area-inset-top)` and `env(safe-area-inset-bottom)`.
+- **PracticeCapture:** Root uses `pb-safe pt-safe`; controls strip uses `pb-safe` and `mt-auto` so Start/Stop sit in the lower third above the home indicator.
+- **Practice page:** "Back to library" has a 44×44 touch target and safe-area padding so it stays clear of the notch.
+- **Dashboard:** Main uses `pt-safe pb-safe`; content uses `pb-[max(6rem,env(safe-area-inset-bottom))]`. **WelcomeKit:** `pt-safe` and bottom padding with safe-area for modal and CTA.
+
+### Touch ergonomics (44×44 & thumb zone)
+
+- **Button:** All buttons get `min-h-[44px] min-w-[44px]` and `tap-scale` in `button.tsx`.
+- **AssessmentFlow:** All primary actions (Start my journey, Continue, Back, Start 30s capture) and Toggle have 44px+ hit areas and `touch-manipulation`.
+- **Dashboard:** "Practice now", recent session links, and continue-learning cards use 44px minimum and `tap-scale`.
+- **Practice controls:** Start/Stop block is in the lower third via `mt-auto` and safe-area padding.
+
+### Hardware acceleration & reduced Bloom
+
+- **PracticeCapture:** Refining overlay and Bloom/sparkle use `will-change: transform` and `translateZ(0)`. **BloomSparkle** component: particle count 2 when `prefers-reduced-motion: reduce`, 6 otherwise.
+- **WelcomeKit & AssessmentFlow:** Motion/Bloom elements use GPU-friendly styles. **Toggle** thumb uses `will-change` / `translateZ(0)`.
+
+### iOS Safari video
+
+- **PracticeCapture, AssessmentFlow, PracticePlayer:** Teacher and webcam `<video>` elements get `webkit-playsinline` and `playsinline` set in `useEffect` for older iOS; all use `playsInline` and `muted` to prevent full-screen native player.
+
+### Tactile feel (native-app style)
+
+- **globals.css:** New `.tap-scale` utility: `transform: translateZ(0)`, `will-change: transform`, and `:active { transform: scale(0.97) }`.
+- **Button:** All variants use `tap-scale`. Practice "Back to library" and dashboard/assessment links use `tap-scale` where appropriate.
+
+### Model-Assisted Labeling (MAL) audit & Admin Verification UI
+
+- **`docs/MAL_AUDIT_2026.md`:** Full audit of MAL and Automated Labeling Pipeline: DTW/ST-GCN/Pattern Library/CoMPAS/SalsaAgent, runAutoLabel/suggested_labels/segmentation, Proposed vs Verified, one-click vs swipe, zero-shot/VLM, similarity thresholds (0.55, 0.85, 0.7, 0.6), and code gaps. **MAL Readiness Score: ~62%.**
+- **`AdminVerificationTinder.tsx`:** Boilerplate for "Tinder for Labels" admin UI: unified **AI_PROPOSAL** type, `suggestedLabelToProposal` / `suggestedSegmentToProposal`, card-based Approve/Reject with optional high-confidence (≥0.85) badge. Exported from `src/features/admin/index.ts`.
+
+---
+
+## Supply-to-Practice, Privacy & Founding Member (2025-03)
+
+### Supply-to-Practice bridge
+
+- **Creator upload → extraction**: `AdminUpload.tsx` inserts new `dance_library` rows with `status: "pending_analysis"`, then fires `POST /api/process-dance-video` with `rowId` so motion_dna is populated automatically. `uploaded_by` set for GDPR erasure.
+- **Gold Standard in registry**: `saveMoveToRegistry` (registry-actions) stores biomechanical curves as Gold Standard; docstring updated. `get-curve-delta-tips.ts` compares student curves to registry and returns dance-literate tips for CoachingCard.
+- **PracticeCapture**: After comparison, calls `getCurveDeltaTips(videoId, frames)` and merges curve-delta tips with joint/timing tips; anonymizes pose data (strip face landmarks) before saving to `practice_sessions`.
+- **Dashboard**: Fetches `session_name` and shows "Recent sessions" with Creative Director names; `recentSessions` passed to DashboardView.
+
+### Practice-to-Coaching refinements
+
+- **CoachingCard**: Accepts optional `comparisonResult` (harmonyScore, worstJointGroup). Boutique tip mapping by joint group (Hips/Feet/Frame); dynamic accent (Rose Gold ≥80%, muted Champagne &lt;60%); staggered Framer Motion entrance for bullets. PracticeCapture passes `comparisonResult` from worker result.
+- **AssessmentFlow step 5**: Glassmorphic persona card with Bloom animation; First Move suggestion from `getFirstMoveForLevel(level)`; link to Encyclopedia.
+- **Mobile**: Practice page and PracticeCapture use `min-h-[100svh]`, safe-area insets, 44px+ touch targets, pulse on Record button; SessionNamePicker pills 44px.
+
+### Privacy Gate & GDPR
+
+- **Migrations**: `profiles` (privacy_consent_granted, has_seen_welcome_kit, has_completed_assessment); `dance_library.uploaded_by`; RLS for practice_sessions DELETE, dance_library DELETE (own uploads), move_registry INSERT/UPDATE/DELETE (admin/teacher only).
+- **deleteUserBiometricData** (privacy-actions): Cascading hard delete of user's practice_sessions and dance_library where uploaded_by = uid. Session verified via getUser(); RLS scoped. Gold Standards never deleted.
+- **exportUserData**: Returns practice_sessions metadata (scores, dates) as JSON for data portability.
+- **Anonymization**: `anonymizePoseData()` strips MediaPipe face landmarks (0–10) before saving student_motion_data.
+- **Consent**: `getPrivacyConsentGranted` / `grantPrivacyConsent`; PrivacyConsentModal in PracticeCapture and AssessmentFlow; camera/MediaPipe only after consent.
+- **updatePracticeSessionName**: Guardian – update scoped to auth.uid() (user_id). useOptimistic in PracticeCapture for instant UI.
+
+### Danger Zone & Right to be Forgotten
+
+- **SettingsView**: Danger Zone with "Request my data export" (downloads JSON) and "Delete my account & biometric data". Multi-step confirmation modal (Step 1: warning; Step 2: final "Permanently delete"). Privacy Policy link and copy: "Face data is never stored, and motion data is yours to control."
+- **On successful delete**: Toast "Your data has been gracefully erased…", then signOut and redirect to `/`. Sonner Toaster added in root layout.
+- **`/privacy`**: Placeholder Privacy Policy page.
+
+### Extraction API (process-dance-video)
+
+- **Auth**: Only admin or teacher (`app_metadata.role`) can trigger; 403 otherwise.
+- **Env**: EXTRACTION_SERVICE_URL, EXTRACTION_API_KEY (optional header), SUPABASE_SERVICE_ROLE_KEY for DB update.
+- **Timeout/retry**: 90s timeout, 2 retries with 3s delay for cold start.
+- **DB update**: Service Role client (`createServiceRoleClient` in lib/supabase/admin.ts) updates dance_library (motion_dna, status: needs_labeling). Supply chain logging: Sent to AI, AI Processing, Data Saved.
+
+### Welcome Kit & Post-Assessment Upsell
+
+- **WelcomeKit** (onboarding): Glassmorphic 3-slide overlay (Vision, How it works, Privacy Pact). Shown on first dashboard visit unless admin/teacher or has_seen_welcome_kit. "Begin Initial Assessment" calls completeWelcomeKit() (consent + has_seen_welcome_kit) and navigates to /onboarding.
+- **AssessmentFlow step 5**: Founding Member upsell card – "Limited Founding Spots Available" badge; aspirational copy; primary CTA "Claim Founding Member Access ✨" → NEXT_PUBLIC_PURCHASE_URL or /pricing; secondary "Continue with 3 free practices" → setAssessmentCompleted(), then dashboard. Social proof: "Join 50+ other dancers in our founding cohort."
+- **`/pricing`**: Placeholder for purchase URL.
+
+### Auth & middleware
+
+- **middleware**: getSession() + getUser() to refresh Supabase session and reduce auth desync.
+
+---
+
 ## Creator Supply Chain & Commercial Strategy (2025-03)
 
 ### Save to Registry (server action)

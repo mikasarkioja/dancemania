@@ -23,6 +23,8 @@ export function PracticePlayer({
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
+    v.setAttribute("webkit-playsinline", "true");
+    v.setAttribute("playsinline", "true");
     const onTimeUpdate = () => setCurrentTime(v.currentTime);
     v.addEventListener("timeupdate", onTimeUpdate);
     return () => v.removeEventListener("timeupdate", onTimeUpdate);
@@ -41,6 +43,7 @@ export function PracticePlayer({
             controls
             className="h-full w-full object-contain"
             playsInline
+            muted
             preload="metadata"
           />
           <InstructionsOverlay

@@ -97,6 +97,7 @@ export async function generateSessionNames(
 
 /**
  * Update a practice session's display name (after user picks or rolls).
+ * Guardian: only the session owner (auth.uid()) can update.
  */
 export async function updatePracticeSessionName(
   sessionId: string,
@@ -104,9 +105,14 @@ export async function updatePracticeSessionName(
 ): Promise<{ success: boolean }> {
   const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false };
   const { error } = await supabase
     .from("practice_sessions")
     .update({ session_name: sessionName })
-    .eq("id", sessionId);
+    .eq("id", sessionId)
+    .eq("user_id", user.id);
   return { success: !error };
 }

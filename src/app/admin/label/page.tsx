@@ -7,7 +7,7 @@ export default async function AdminLabelPage() {
   const appGenre = await getAppGenre();
   const { data: rows } = await supabase
     .from("dance_library")
-    .select("id, slug, title, video_url")
+    .select("id, slug, title, display_name, video_url")
     .eq("genre", appGenre)
     .order("created_at", { ascending: false });
 
@@ -26,7 +26,9 @@ export default async function AdminLabelPage() {
               className="flex items-center gap-2 rounded-md border p-3 transition-colors hover:bg-muted"
             >
               <Link href={`/admin/label/${row.id}`} className="min-w-0 flex-1">
-                <span className="font-medium">{row.title}</span>
+                <span className="font-medium">
+                  {row.display_name?.trim() || row.title}
+                </span>
                 <span className="ml-2 text-sm text-muted-foreground">
                   {row.slug}
                 </span>

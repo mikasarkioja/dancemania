@@ -1,6 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import {
+  useRef,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useOptimistic,
+} from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Circle, Square } from "lucide-react";
@@ -12,6 +19,7 @@ import {
 } from "@/engines/comparison-engine";
 import { createClient } from "@/lib/supabase/client";
 import { generateAndSaveCoachingFeedback } from "@/app/actions/generate-coaching-feedback";
+import { getCurveDeltaTips } from "@/app/actions/get-curve-delta-tips";
 import {
   generateSessionNames,
   updatePracticeSessionName,
@@ -34,11 +42,66 @@ import {
 import { useComparisonWorker } from "@/hooks/useComparisonWorker";
 import type { JointGroup } from "@/engines/comparison.worker";
 import { Logo } from "@/components/brand/Logo";
+import { anonymizePoseData } from "@/lib/privacy/anonymize-pose";
+import {
+  getPrivacyConsentGranted,
+  grantPrivacyConsent,
+} from "@/features/user/actions/consent-actions";
+import { PrivacyConsentModal } from "@/features/user/components/PrivacyConsentModal";
 
 const FPS = 30;
 const TEACHER_GHOST_COLOR = "rgba(196, 181, 253, 0.5)";
 const STUDENT_SKELETON_COLOR = "hsl(var(--primary))";
 const COUNT_IN_SEC = 3;
+
+/** Sparkle/Bloom effect with GPU acceleration; fewer particles when reduced motion or low power. */
+function BloomSparkle({ show }: { show: boolean }) {
+  const [particleCount, setParticleCount] = useState(6);
+  useEffect(() => {
+    const reducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setParticleCount(reducedMotion ? 2 : 6);
+  }, []);
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          style={{ willChange: "transform", transform: "translateZ(0)" }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <motion.div
+            style={{ willChange: "transform", transform: "translateZ(0)" }}
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            transition={{ type: "spring", stiffness: 300 }}
+          >
+            <Sparkles className="h-16 w-16 text-accent drop-shadow-lg" />
+          </motion.div>
+          {[...Array(particleCount)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="absolute w-2 h-2 rounded-full bg-accent"
+              style={{ willChange: "transform", transform: "translateZ(0)" }}
+              initial={{ scale: 0, x: 0, y: 0 }}
+              animate={{
+                scale: 1,
+                x: Math.cos((i / particleCount) * Math.PI * 2) * 40,
+                y: Math.sin((i / particleCount) * Math.PI * 2) * 40,
+                opacity: 0,
+              }}
+              transition={{ duration: 0.6 }}
+            />
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
 
 /** Pro tips by worst joint group (champagne-and-rose, boutique-instructor tone). */
 function getProTipsForJointGroup(group: JointGroup): string[] {
@@ -125,6 +188,11 @@ export function PracticeCapture({
       count?: number;
       severity?: "low" | "medium" | "high";
     }[];
+    comparisonResult?: {
+      harmonyScore: number;
+      worstJointGroup: JointGroup;
+      timingOffsetMs?: number;
+    };
   } | null>(null);
   const [namePickerSessionId, setNamePickerSessionId] = useState<string | null>(
     null
@@ -153,10 +221,23 @@ export function PracticeCapture({
   useEffect(() => {
     const v = teacherVideoRef.current;
     if (!v) return;
+    v.setAttribute("webkit-playsinline", "true");
+    v.setAttribute("playsinline", "true");
     const onTimeUpdate = () => setTeacherTime(v.currentTime);
     v.addEventListener("timeupdate", onTimeUpdate);
     return () => v.removeEventListener("timeupdate", onTimeUpdate);
   }, [videoUrl]);
+
+  useEffect(() => {
+    const v = webcamVideoRef.current;
+    if (!v) return;
+    v.setAttribute("webkit-playsinline", "true");
+    v.setAttribute("playsinline", "true");
+  }, []);
+
+  useEffect(() => {
+    getPrivacyConsentGranted().then(setPrivacyConsentGranted);
+  }, []);
 
   const startWebcam = useCallback(async () => {
     try {
@@ -176,13 +257,14 @@ export function PracticeCapture({
   }, []);
 
   useEffect(() => {
+    if (privacyConsentGranted !== true) return;
     startWebcam();
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [startWebcam]);
+  }, [privacyConsentGranted, startWebcam]);
 
   const tick = useCallback(() => {
     const canvas = webcamCanvasRef.current;
@@ -313,6 +395,34 @@ export function PracticeCapture({
     const teacher = teacherFrames;
     calibrateAndCompare(frames, teacher)
       .then(async (res) => {
+        const jointTip = {
+          message:
+            res.worstJointGroup === "Hips"
+              ? "Focus on hip movement—let your pelvis lead the Cuban motion for a stronger match."
+              : res.worstJointGroup === "Feet"
+                ? "Focus on footwork: weight transfer and step timing will lift your match."
+                : "Focus on frame—soft shoulders and connected arms for a stronger match.",
+          severity: "medium" as const,
+        };
+        const timingTip =
+          res.timingOffsetMs != null && Math.abs(res.timingOffsetMs) > 80
+            ? {
+                message:
+                  res.timingOffsetMs > 0
+                    ? "Your hip timing is slightly ahead of the beat—try to sink into the '2' more!"
+                    : "You're a bit behind the beat—let the count lead you; stay loose on the '1'.",
+                severity: "medium" as const,
+              }
+            : null;
+        const curveDelta = await getCurveDeltaTips(videoId, frames);
+        const correctionTips = [
+          jointTip,
+          ...(timingTip ? [timingTip] : []),
+          ...curveDelta.tips.map((t) => ({
+            message: t.message,
+            severity: t.severity,
+          })),
+        ];
         setLastCoachingResult({
           score: res.harmonyScore,
           proTips: getProTipsForJointGroup(res.worstJointGroup),
@@ -322,12 +432,12 @@ export function PracticeCapture({
             placementAvg: res.harmonyScore / 100,
             alignedPairs: res.pathLength ?? 0,
           },
-          correctionTips: [
-            {
-              message: `Focus on ${res.worstJointGroup.toLowerCase()} for a stronger match.`,
-              severity: "medium",
-            },
-          ],
+          correctionTips,
+          comparisonResult: {
+            harmonyScore: res.harmonyScore,
+            worstJointGroup: res.worstJointGroup,
+            timingOffsetMs: res.timingOffsetMs,
+          },
         });
         if (res.harmonyScore > 85) setShowSparkle(true);
         const supabase = createClient();
@@ -339,6 +449,7 @@ export function PracticeCapture({
           durationMs: frames[frames.length - 1]?.timestamp ?? 0,
           source: "student",
         };
+        const anonymizedMotion = anonymizePoseData(studentMotion);
         if (user) {
           const { data: sessionRow, error: insertError } = await supabase
             .from("practice_sessions")
@@ -346,7 +457,7 @@ export function PracticeCapture({
               user_id: user.id,
               video_id: videoId,
               ...(moveId ? { move_id: moveId } : {}),
-              student_motion_data: studentMotion,
+              student_motion_data: anonymizedMotion,
               score_total: res.harmonyScore,
               metrics: {
                 worstJointGroup: res.worstJointGroup,
@@ -361,13 +472,11 @@ export function PracticeCapture({
               sessionRow.id,
               {
                 score: res.harmonyScore / 100,
-                correctionTips: [
-                  {
-                    message: `Focus on ${res.worstJointGroup.toLowerCase()} for a stronger match.`,
-                    count: 1,
-                    severity: "medium",
-                  },
-                ],
+                correctionTips: correctionTips.map((t) => ({
+                  message: t.message,
+                  count: 1,
+                  severity: t.severity,
+                })),
                 metrics: {
                   tensionAvg: res.harmonyScore / 100,
                   isolationAvg: res.harmonyScore / 100,
@@ -377,6 +486,7 @@ export function PracticeCapture({
               },
               genre
             );
+            // Creative Director: auto-propose 3 engaging names (naming-engine); user picks with single tap
             const naming = await generateSessionNames({
               bpm: bpm ?? 0,
               genre,
@@ -407,13 +517,35 @@ export function PracticeCapture({
     calibrateAndCompare,
   ]);
 
+  const [privacyConsentGranted, setPrivacyConsentGranted] = useState<
+    boolean | null
+  >(null);
+  const [consentLoading, setConsentLoading] = useState(false);
+  const [savedSessionName, setSavedSessionName] = useState<string | null>(null);
+  const [displaySessionName, setDisplaySessionNameOptimistic] = useOptimistic(
+    savedSessionName,
+    (_current, optimistic: string) => optimistic
+  );
+
+  const handleAcceptPrivacyConsent = useCallback(async () => {
+    setConsentLoading(true);
+    const { success } = await grantPrivacyConsent();
+    if (success) setPrivacyConsentGranted(true);
+    setConsentLoading(false);
+  }, []);
+
   const handlePickSessionName = useCallback(
     async (name: string) => {
       if (!namePickerSessionId) return;
-      await updatePracticeSessionName(namePickerSessionId, name);
+      setDisplaySessionNameOptimistic(name);
       setNamePickerSessionId(null);
+      const { success } = await updatePracticeSessionName(
+        namePickerSessionId,
+        name
+      );
+      if (success) setSavedSessionName(name);
     },
-    [namePickerSessionId]
+    [namePickerSessionId, setDisplaySessionNameOptimistic]
   );
 
   const handleRollSessionNames = useCallback(async () => {
@@ -431,12 +563,22 @@ export function PracticeCapture({
   }, [bpm, genre, instructions]);
 
   return (
-    <div className="flex flex-col gap-4 relative">
+    <div
+      className="relative flex min-h-svh flex-col gap-4 pb-safe pt-safe"
+      style={{ minHeight: "100svh" }}
+    >
+      {privacyConsentGranted === false && (
+        <PrivacyConsentModal
+          onAccept={handleAcceptPrivacyConsent}
+          loading={consentLoading}
+        />
+      )}
       <AnimatePresence>
         {isProcessing && (
           <motion.div
             key="refining-overlay"
             className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
+            style={{ willChange: "transform", transform: "translateZ(0)" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -452,6 +594,12 @@ export function PracticeCapture({
             />
             <motion.div
               className="relative flex flex-col items-center justify-center rounded-[2rem] border border-white/40 bg-white/30 px-12 py-10 shadow-2xl backdrop-blur-xl"
+              style={{
+                minWidth: "min(85vw, 300px)",
+                minHeight: "min(50vmin, 220px)",
+                willChange: "transform",
+                transform: "translateZ(0)",
+              }}
               initial={{ opacity: 0, scale: 0.96 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.98 }}
@@ -459,12 +607,9 @@ export function PracticeCapture({
                 duration: 0.4,
                 ease: [0.4, 0, 0.2, 1],
               }}
-              style={{
-                minWidth: "min(85vw, 300px)",
-                minHeight: "min(50vmin, 220px)",
-              }}
             >
               <motion.div
+                style={{ willChange: "transform", transform: "translateZ(0)" }}
                 animate={{
                   scale: [1, 1.05, 1],
                   opacity: [0.9, 1, 0.9],
@@ -541,6 +686,8 @@ export function PracticeCapture({
                     width: 80 + similarity * 120,
                     height: 80 + similarity * 120,
                     boxShadow: `0 0 ${40 + similarity * 60}px hsl(var(--primary) / 0.6)`,
+                    willChange: "transform",
+                    transform: "translateZ(0)",
                   }}
                   animate={{
                     scale: 0.8 + similarity * 0.4,
@@ -549,45 +696,13 @@ export function PracticeCapture({
                   transition={{ type: "spring", stiffness: 200, damping: 20 }}
                 />
               </div>
-              <AnimatePresence>
-                {showSparkle && (
-                  <motion.div
-                    className="absolute inset-0 flex items-center justify-center pointer-events-none"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                  >
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      exit={{ scale: 0 }}
-                      transition={{ type: "spring", stiffness: 300 }}
-                    >
-                      <Sparkles className="h-16 w-16 text-accent drop-shadow-lg" />
-                    </motion.div>
-                    {[...Array(6)].map((_, i) => (
-                      <motion.div
-                        key={i}
-                        className="absolute w-2 h-2 rounded-full bg-accent"
-                        initial={{ scale: 0, x: 0, y: 0 }}
-                        animate={{
-                          scale: 1,
-                          x: Math.cos((i / 6) * Math.PI * 2) * 40,
-                          y: Math.sin((i / 6) * Math.PI * 2) * 40,
-                          opacity: 0,
-                        }}
-                        transition={{ duration: 0.6 }}
-                      />
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <BloomSparkle show={showSparkle} />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="rounded-2xl border border-border/40 bg-card/80 p-4 shadow-lg backdrop-blur-md">
+      <div className="mt-auto rounded-2xl border border-border/40 bg-card/80 p-4 pb-safe shadow-lg backdrop-blur-md">
         <div className="flex flex-wrap items-center gap-4">
           {instructions.length > 0 && (
             <div className="flex items-center gap-2">
@@ -596,7 +711,7 @@ export function PracticeCapture({
                 value={String(selectedMoveIndex)}
                 onValueChange={(v) => setSelectedMoveIndex(Number(v))}
               >
-                <SelectTrigger className="w-[180px] rounded-xl border-border/40 bg-background/80">
+                <SelectTrigger className="min-h-[44px] w-[180px] touch-manipulation rounded-xl border-border/40 bg-background/80">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -621,7 +736,7 @@ export function PracticeCapture({
           ) : recording ? (
             <Button
               size="lg"
-              className="min-h-[48px] rounded-xl bg-destructive/90 hover:bg-destructive text-destructive-foreground"
+              className="min-h-[48px] min-w-[44px] touch-manipulation rounded-xl bg-destructive/90 hover:bg-destructive text-destructive-foreground"
               onClick={handleStop}
               disabled={saving}
             >
@@ -629,14 +744,29 @@ export function PracticeCapture({
               Stop & Save
             </Button>
           ) : (
-            <Button
-              size="lg"
-              className="min-h-[48px] rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground"
-              onClick={handleStart}
+            <motion.div
+              className="min-h-[48px] min-w-[44px]"
+              animate={{
+                boxShadow: [
+                  "0 0 0 0 hsl(var(--primary) / 0.4)",
+                  "0 0 0 12px hsl(var(--primary) / 0)",
+                ],
+              }}
+              transition={{
+                duration: 1.5,
+                repeat: Infinity,
+                ease: "easeOut",
+              }}
             >
-              <Circle className="mr-2 h-5 w-5 fill-current" />
-              Start practice
-            </Button>
+              <Button
+                size="lg"
+                className="min-h-[48px] min-w-[44px] touch-manipulation rounded-xl bg-primary px-6 hover:bg-primary/90 text-primary-foreground"
+                onClick={handleStart}
+              >
+                <Circle className="mr-2 h-5 w-5 fill-current" />
+                Start practice
+              </Button>
+            </motion.div>
           )}
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -678,6 +808,14 @@ export function PracticeCapture({
             </Card>
           </motion.div>
         )}
+        {displaySessionName && (
+          <p className="text-center text-sm text-muted-foreground">
+            Session saved as{" "}
+            <span className="font-medium text-foreground">
+              &quot;{displaySessionName}&quot;
+            </span>
+          </p>
+        )}
         {lastCoachingResult && !namePickerSessionId && (
           <motion.div
             key="coaching-card"
@@ -696,6 +834,7 @@ export function PracticeCapture({
               proTips={lastCoachingResult.proTips}
               metrics={lastCoachingResult.metrics}
               correctionTips={lastCoachingResult.correctionTips}
+              comparisonResult={lastCoachingResult.comparisonResult}
               onRetry={() => setLastCoachingResult(null)}
               onNext={() => router.push("/library")}
               nextLabel="Back to library"

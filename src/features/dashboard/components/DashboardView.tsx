@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { Settings } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -12,6 +13,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Sparkles, Flower2 } from "lucide-react";
+import { WelcomeKit } from "@/features/onboarding/components/WelcomeKit";
 
 export interface ChartPoint {
   date: string;
@@ -35,12 +37,24 @@ export interface MoveOfTheDay {
   category: string;
 }
 
+/** Recent practice sessions (Creative Director session names). */
+export interface RecentSession {
+  id: string;
+  videoId: string;
+  createdAt: string;
+  scoreTotal: number;
+  sessionName: string;
+}
+
 export interface DashboardViewProps {
   userName: string;
   bloomProgress: number;
   chartData: ChartPoint[];
   continueLearningVideos: ContinueVideo[];
+  recentSessions?: RecentSession[];
   moveOfTheDay: MoveOfTheDay | null;
+  /** Show the Test User Welcome Kit overlay (first authenticated session, non-admin). */
+  shouldShowWelcomeKit?: boolean;
 }
 
 const container = {
@@ -61,11 +75,14 @@ export function DashboardView({
   bloomProgress,
   chartData,
   continueLearningVideos,
+  recentSessions = [],
   moveOfTheDay,
+  shouldShowWelcomeKit = false,
 }: DashboardViewProps) {
   return (
-    <main className="min-h-screen bg-brand-champagne/50">
-      <div className="container mx-auto max-w-2xl px-4 pb-24 pt-6 sm:px-6 sm:pt-8">
+    <main className="min-h-svh bg-brand-champagne/50 pt-safe pb-safe">
+      {shouldShowWelcomeKit && <WelcomeKit />}
+      <div className="container mx-auto max-w-2xl px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pt-8">
         <motion.div
           variants={container}
           initial="hidden"
@@ -82,7 +99,16 @@ export function DashboardView({
                 Welcome back to the studio, {userName} ✨
               </h1>
             </div>
-            <ActivityRing progress={bloomProgress} />
+            <div className="flex items-center gap-2">
+              <Link
+                href="/settings"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/50 bg-white/60 text-foreground shadow-sm backdrop-blur-md transition hover:bg-white/80"
+                aria-label="Settings"
+              >
+                <Settings className="h-5 w-5" />
+              </Link>
+              <ActivityRing progress={bloomProgress} />
+            </div>
           </motion.header>
 
           {/* Move of the Day - thumb-friendly, first after header */}
@@ -100,7 +126,7 @@ export function DashboardView({
                 </p>
                 <Link
                   href="/encyclopedia"
-                  className="mt-4 inline-flex items-center justify-center rounded-full bg-brand-rose px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:opacity-90"
+                  className="mt-4 inline-flex min-h-[44px] min-w-[44px] touch-manipulation items-center justify-center rounded-full bg-brand-rose px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:opacity-90 tap-scale"
                 >
                   Practice now
                 </Link>
@@ -184,6 +210,35 @@ export function DashboardView({
             </div>
           </motion.section>
 
+          {/* Recent sessions (Creative Director names) */}
+          {recentSessions.length > 0 && (
+            <motion.section variants={item}>
+              <h2 className="font-serif text-lg font-bold text-foreground">
+                Recent sessions
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Your practice recordings
+              </p>
+              <ul className="mt-3 space-y-2">
+                {recentSessions.map((session) => (
+                  <li key={session.id}>
+                    <Link
+                      href={`/practice/${session.videoId}`}
+                      className="flex min-h-[44px] touch-manipulation items-center justify-between rounded-xl border border-white/50 bg-white/60 px-4 py-3 shadow-sm backdrop-blur-md transition-shadow hover:shadow-md tap-scale"
+                    >
+                      <span className="font-medium text-foreground">
+                        {session.sessionName}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {session.scoreTotal}%
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </motion.section>
+          )}
+
           {/* Continue Learning carousel */}
           <motion.section variants={item}>
             <h2 className="font-serif text-lg font-bold text-foreground">
@@ -198,7 +253,7 @@ export function DashboardView({
                   <Link
                     key={video.id}
                     href={`/practice/${video.id}`}
-                    className="group flex shrink-0"
+                    className="group flex min-h-[44px] min-w-[44px] shrink-0 touch-manipulation tap-scale"
                   >
                     <div className="w-[160px] overflow-hidden rounded-2xl border border-white/50 bg-white/60 shadow-sm backdrop-blur-md transition-shadow group-hover:shadow-md">
                       <div className="relative aspect-video bg-muted">

@@ -6,6 +6,11 @@
       "sourceType": "github",
       "computedHash": "90b1fed86b228f45db6845648dfb42f0add4126d91ca6da76e8295dc1cd83138"
     },
+    "build-iphone-apps": {
+      "source": "mosif16/codex-skills",
+      "sourceType": "github",
+      "computedHash": "f5b88baa8b628e0b4d7e5bfc41d7a8c29037d07115f1573f7364de8abe466af2"
+    },
     "music": {
       "source": "elevenlabs/skills",
       "sourceType": "github",

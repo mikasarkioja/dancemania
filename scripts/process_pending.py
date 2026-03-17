@@ -1,6 +1,16 @@
 """
 Scanner / process-pending: fetch move_registry Gold Standard, suggest_labels for dance_library.
-Auto-naming: when updating dance_library, set display_name from generate_pro_name for generic titles only.
+
+Auto-naming (--auto-name):
+  - What it does: Sets dance_library.display_name when the *title* looks like a
+    generic filename (IMG_*, video_*, v_*, PXL_*). Uses BPM + genre to generate a
+    friendly name (e.g. "Energetic Midnight Salsa") or "Studio Session - <time>"
+    if BPM is missing. The UI (Label videos, etc.) should show display_name when
+    set, otherwise title.
+  - What it does NOT do: It does not analyze video/audio content. It does not
+    detect BPM or genre from the file—those must already be in the DB (from
+    upload form or another pipeline). "Content-based" labelling would require
+    a separate step (e.g. audio BPM detection, motion_dna extraction).
 See scripts/README-auto-label.md for usage (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).
 """
 
@@ -9,6 +19,17 @@ import datetime
 import os
 import sys
 
+# Load .env.local from project root so SUPABASE_* can be set there
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.dirname(_script_dir)
+_env_local = os.path.join(_project_root, ".env.local")
+if os.path.isfile(_env_local):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(_env_local)
+    except ImportError:
+        pass
+
 # Optional: use supabase-py if available (pip install supabase)
 try:
     from supabase import create_client as _create_supabase
@@ -16,15 +37,16 @@ try:
 except ImportError:
     HAS_SUPABASE = False
 
-# Generic filename prefixes that we replace with a boutique name
-GENERIC_PREFIXES = ("IMG_", "video_", "v_")
+# Generic filename prefixes that we replace with a boutique name (matched case-insensitively)
+GENERIC_PREFIXES = ("img_", "video_", "v_", "pxl_")
 
 
 def _is_generic_name(name):
-    """True if the name looks like a generic upload (IMG_, video_, v_)."""
+    """True if the name looks like a generic upload (IMG_, video_, v_, etc.)."""
     if not name or not name.strip():
         return False
-    return name.strip().startswith(GENERIC_PREFIXES)
+    lower = name.strip().lower()
+    return any(lower.startswith(p) for p in GENERIC_PREFIXES)
 
 
 def generate_pro_name(bpm, genre, filename):
@@ -101,7 +123,7 @@ def get_supabase_client():
     return _create_supabase(url, key)
 
 
-def run_auto_name(supabase, video_id=None):
+def run_auto_name(supabase, video_id=None, verbose=False):
     """
     For each dance_library row (optionally filtered by video_id):
     - If title is generic and display_name is empty, set display_name via generate_pro_name.
@@ -113,16 +135,36 @@ def run_auto_name(supabase, video_id=None):
         query = query.eq("id", video_id)
     rows = query.execute()
     if not rows.data:
+        if verbose:
+            print("[auto-name] No rows in dance_library (or none match --video-id).")
         return
+    if verbose:
+        print(f"[auto-name] Found {len(rows.data)} row(s). Generic titles: IMG_*, video_*, v_* (case-insensitive).")
+    updated = 0
     for row in rows.data:
         title = row.get("title") or ""
         display_name = row.get("display_name")
         bpm = row.get("bpm")
         genre = row.get("genre") or "other"
         new_name, should = resolve_display_name(bpm, genre, title, display_name)
+        if verbose:
+            generic = _is_generic_name(title)
+            reason = (
+                "skip: title not generic"
+                if not generic
+                else "skip: display_name already set"
+                if (display_name and display_name.strip())
+                else "update"
+                if should and new_name
+                else "skip: no name generated"
+            )
+            print(f"  id={row['id'][:8]}... title={title!r} -> {reason}" + (f" -> {new_name!r}" if should and new_name else ""))
         if should and new_name:
             table.update({"display_name": new_name}).eq("id", row["id"]).execute()
             print(f"[auto-name] {row['id']}: {new_name}")
+            updated += 1
+    if verbose:
+        print(f"[auto-name] Done. Updated {updated} row(s).")
     return
 
 
@@ -145,13 +187,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scanner + auto-naming for dance_library")
     parser.add_argument("--video-id", type=str, help="Process only this dance_library id")
     parser.add_argument("--auto-name", action="store_true", help="Run auto-naming only (set display_name for generic titles)")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Print each row and why it was skipped or updated")
     parser.add_argument("--threshold", type=float, default=0.7, help="Similarity threshold for Scanner (future)")
     args = parser.parse_args()
 
     if args.auto_name:
         client = get_supabase_client()
         if client:
-            run_auto_name(client, video_id=args.video_id)
+            run_auto_name(client, video_id=args.video_id, verbose=args.verbose)
         sys.exit(0 if client else 1)
 
     # TODO: Scanner – fetch move_registry, suggest_labels, write suggested_labels.

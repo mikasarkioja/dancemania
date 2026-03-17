@@ -74,6 +74,7 @@ body {
   background-color: hsl(10 20% 98%) !important;
   color: hsl(240 10% 14%) !important;
   min-height: 100vh;
+  min-height: 100svh;
   min-height: 100dvh;
   padding-left: env(safe-area-inset-left, 0);
   padding-right: env(safe-area-inset-right, 0);
@@ -87,14 +88,28 @@ body {
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
-  .scrollbar-hide::-webkit-scrollbar {
-    display: none;
-  }
   .safe-area-inset-bottom {
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
   .min-h-screen-ios {
     min-height: 100vh;
+    min-height: 100svh;
     min-height: 100dvh;
+  }
+  /* Safe-area padding for notch / home indicator (Tailwind-style) */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  /* Tactile press: native-app feel (GPU-accelerated) */
+  .tap-scale {
+    transform: translateZ(0);
+    will-change: transform;
+    transition: transform 0.12s ease-out;
+  }
+  .tap-scale:active {
+    transform: scale(0.97) translateZ(0);
   }
 }

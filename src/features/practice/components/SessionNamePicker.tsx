@@ -5,9 +5,9 @@ import { Dices } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** Rose-gold pill style: border and subtle fill matching boutique palette. */
+/** Rose-gold pill style: border and subtle fill; 44px min height for touch. */
 const pillClass =
-  "rounded-full border-2 px-4 py-2.5 text-sm font-medium transition-colors " +
+  "min-h-[44px] touch-manipulation rounded-full border-2 px-4 py-2.5 text-sm font-medium transition-colors " +
   "border-[hsl(346,77%,50%)]/50 bg-[hsl(346,77%,50%)]/8 hover:bg-[hsl(346,77%,50%)]/18 " +
   "text-foreground hover:border-[hsl(346,77%,50%)]/70";
 

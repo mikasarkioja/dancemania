@@ -35,8 +35,27 @@ Joint keys: e.g. `left_shoulder`, `right_shoulder`, `left_hip`, `right_hip`, `le
 ## Environment
 
 - `EXTRACTION_SERVICE_URL`: URL of the Python bridge (POST with `{ video_url }`, returns PoseData JSON). If unset, the API returns 503.
+- `EXTRACTION_API_KEY`: (Optional) Secret sent as `Authorization: Bearer` and `X-API-Key` for Python service auth.
+- `SUPABASE_SERVICE_ROLE_KEY`: Required for updating `dance_library` after extraction (bypasses RLS).
+
+## Security
+
+- **Guardian:** Only callers with `app_metadata.role` **admin** or **teacher** can trigger extraction. Others receive 403.
+
+## Timeout / retry
+
+- Request timeout: 90s (cold-start friendly).
+- Retries: 2 (3 attempts total) with 3s delay between attempts.
+
+## Supply chain logging
+
+Each stage is logged for health monitoring:
+
+- **Sent to AI** — rowId and video URL when the request is sent to the Python service.
+- **AI Processing** — response status after the service responds.
+- **Data Saved** — rowId, status `needs_labeling`, and frame count after the DB update.
 
 ## After success
 
-- `dance_library.motion_dna` is set to the returned PoseData.
-- `dance_library.status` is set to **`needs_labeling`** (ready for admin to label segments).
+- `dance_library.motion_dna` is set to the returned PoseData (via Service Role client).
+- `dance_library.status` is set to **`needs_labeling`** (ready for Dictionary Lab).

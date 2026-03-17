@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   compareStudentToTeacher,
@@ -15,9 +16,22 @@ import {
 } from "@/features/practice/utils/mediapipe-pose-to-frame";
 import { drawSkeleton } from "@/lib/utils/skeleton-canvas";
 import { createSyntheticTeacherMotion } from "../utils/synthetic-motion";
+import { getFirstMoveForLevel } from "@/app/actions/get-first-move-for-level";
+import type { FirstMoveSuggestion } from "@/app/actions/get-first-move-for-level";
+import {
+  getPrivacyConsentGranted,
+  grantPrivacyConsent,
+} from "@/features/user/actions/consent-actions";
+import { setAssessmentCompleted } from "@/features/user/actions/assessment-actions";
+import { PrivacyConsentModal } from "@/features/user/components/PrivacyConsentModal";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Circle, Square } from "lucide-react";
+import { Circle, Square, Sparkles } from "lucide-react";
+
+const FOUNDING_MEMBER_URL =
+  process.env.NEXT_PUBLIC_PURCHASE_URL ||
+  process.env.NEXT_PUBLIC_FOUNDING_MEMBER_URL ||
+  "/pricing";
 
 const FPS = 30;
 const CAPTURE_DURATION_SEC = 30;
@@ -49,7 +63,22 @@ export function AssessmentFlow({
   const [studentMotion, setStudentMotion] = useState<PoseData | null>(null);
   const [level, setLevel] = useState<AssessmentLevel | null>(null);
   const [harmonyScore, setHarmonyScore] = useState(0);
+  const [firstMove, setFirstMove] = useState<FirstMoveSuggestion | null>(null);
+  const [privacyConsentGranted, setPrivacyConsentGranted] = useState<
+    boolean | null
+  >(null);
+  const [consentLoading, setConsentLoading] = useState(false);
   const [, setProcessing] = useState(false);
+
+  useEffect(() => {
+    if (step === 5 && level) {
+      getFirstMoveForLevel(level, "Salsa").then(setFirstMove);
+    }
+  }, [step, level]);
+
+  useEffect(() => {
+    getPrivacyConsentGranted().then(setPrivacyConsentGranted);
+  }, []);
 
   const teacherMotion = teacherMotionProp ?? createSyntheticTeacherMotion();
   const teacherFrames = teacherMotion.frames;
@@ -60,7 +89,7 @@ export function AssessmentFlow({
   };
 
   return (
-    <div className="min-h-screen bg-brand-champagne/50 px-4 py-8">
+    <div className="min-h-svh bg-brand-champagne/50 px-4 py-8 pt-safe pb-safe">
       <div className="mx-auto max-w-lg">
         <AnimatePresence mode="wait" initial={false} custom={direction}>
           {step === 1 && (
@@ -78,7 +107,7 @@ export function AssessmentFlow({
                 Every dancer has a unique signature. Let&apos;s find yours. ✨
               </p>
               <Button
-                className="mt-8 rounded-full bg-brand-rose px-6 py-3 text-white hover:opacity-90"
+                className="mt-8 min-h-[44px] min-w-[44px] touch-manipulation rounded-full bg-brand-rose px-6 py-3 text-white hover:opacity-90"
                 onClick={() => go(2, 1)}
               >
                 Start my journey
@@ -127,9 +156,13 @@ export function AssessmentFlow({
                     />
                   </div>
                   <Button
-                    className="w-full rounded-full bg-brand-rose text-white hover:opacity-90"
+                    className="w-full min-h-[44px] min-w-[44px] touch-manipulation rounded-full bg-brand-rose text-white hover:opacity-90"
                     disabled={!biometricConsent}
-                    onClick={() => go(3, 1)}
+                    onClick={async () => {
+                      await grantPrivacyConsent();
+                      setPrivacyConsentGranted(true);
+                      go(3, 1);
+                    }}
                   >
                     Continue
                   </Button>
@@ -148,9 +181,21 @@ export function AssessmentFlow({
               exit="exit"
               transition={{ duration: 0.3 }}
             >
+              {privacyConsentGranted === false && (
+                <PrivacyConsentModal
+                  onAccept={async () => {
+                    setConsentLoading(true);
+                    const { success } = await grantPrivacyConsent();
+                    if (success) setPrivacyConsentGranted(true);
+                    setConsentLoading(false);
+                  }}
+                  loading={consentLoading}
+                />
+              )}
               <AssessmentCapture
                 basicStepVideoUrl={basicStepVideoUrl}
                 teacherFrames={teacherFrames}
+                consentGranted={privacyConsentGranted === true}
                 onComplete={(motion) => {
                   setStudentMotion(motion);
                   go(4, 1);
@@ -193,20 +238,112 @@ export function AssessmentFlow({
               animate="center"
               exit="exit"
               transition={{ duration: 0.3 }}
-              className="rounded-2xl border border-white/50 bg-white/60 p-8 shadow-sm backdrop-blur-md"
+              className="overflow-hidden rounded-3xl border border-white/60 bg-white/40 p-8 shadow-2xl backdrop-blur-xl"
+              style={{
+                boxShadow:
+                  "0 8px 32px rgba(253, 164, 175, 0.2), inset 0 1px 0 rgba(255,255,255,0.6)",
+              }}
             >
-              <p className="text-center font-serif text-2xl font-bold text-foreground">
-                You have a natural {level}&apos;s grace! 💃
-              </p>
-              <p className="mt-2 text-center text-sm text-muted-foreground">
-                Harmony score: {harmonyScore}%
-              </p>
-              <Button
-                className="mt-8 w-full rounded-full bg-brand-rose text-white hover:opacity-90"
-                onClick={() => router.push("/dashboard")}
+              <motion.div
+                className="relative flex flex-col items-center"
+                initial={{ scale: 0.92, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.55, ease: [0.4, 0, 0.2, 1] }}
               >
-                Open my Studio Dashboard
-              </Button>
+                <motion.div
+                  className="absolute -inset-4 rounded-full bg-brand-rose/20"
+                  animate={{
+                    scale: [1, 1.4, 1],
+                    opacity: [0.3, 0.05, 0.3],
+                  }}
+                  transition={{
+                    duration: 2.5,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                  }}
+                />
+                <motion.div
+                  className="relative flex h-20 w-20 items-center justify-center rounded-full border-2 border-white/70 bg-gradient-to-br from-brand-rose/90 to-brand-rose"
+                  animate={{
+                    boxShadow: [
+                      "0 0 0 0 rgba(253, 164, 175, 0.5)",
+                      "0 0 0 24px rgba(253, 164, 175, 0)",
+                    ],
+                  }}
+                  transition={{
+                    duration: 1.8,
+                    repeat: Infinity,
+                    ease: "easeOut",
+                  }}
+                >
+                  <Sparkles className="h-10 w-10 text-white" />
+                </motion.div>
+                <p className="mt-6 text-center font-serif text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                  You&apos;re a {level}
+                </p>
+                <p className="mt-1 text-center text-sm text-muted-foreground">
+                  Harmony score: {harmonyScore}%
+                </p>
+                {firstMove && (
+                  <div className="mt-5 w-full rounded-2xl border border-white/50 bg-white/50 p-4 backdrop-blur-sm">
+                    <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
+                      Your first move
+                    </p>
+                    <p className="mt-1 font-serif text-lg font-semibold text-foreground">
+                      {firstMove.name}
+                    </p>
+                    {firstMove.category && (
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {firstMove.category}
+                      </p>
+                    )}
+                    <Link
+                      href="/encyclopedia"
+                      className="mt-3 inline-block text-sm font-medium text-brand-rose hover:underline"
+                    >
+                      Explore in Encyclopedia →
+                    </Link>
+                  </div>
+                )}
+
+                <div className="mt-6 w-full rounded-2xl border border-white/60 bg-white/50 p-5 shadow-lg backdrop-blur-md">
+                  <span className="inline-block rounded-full border border-brand-rose/40 bg-brand-rose/10 px-3 py-1 text-xs font-medium uppercase tracking-wider text-brand-rose">
+                    Limited Founding Spots Available
+                  </span>
+                  <p className="mt-4 text-center font-serif text-base leading-relaxed text-foreground">
+                    You&apos;ve been ranked as a <strong>{level}</strong>. To
+                    reach &quot;Performer&quot; status, unlock your personalized
+                    Mastery Path, unlimited AI coaching, and exclusive
+                    Masterclass Move Packs.
+                  </p>
+                  <p className="mt-3 text-center text-xs text-muted-foreground">
+                    Join 50+ other dancers in our founding cohort.
+                  </p>
+                  <div className="mt-5 flex flex-col gap-3">
+                    <Link href={FOUNDING_MEMBER_URL} className="block">
+                      <Button
+                        className="w-full min-h-[48px] touch-manipulation rounded-full bg-brand-rose px-6 py-3 text-white shadow-lg shadow-brand-rose/30 hover:opacity-95"
+                        style={{
+                          boxShadow: "0 0 20px rgba(253, 164, 175, 0.4)",
+                        }}
+                      >
+                        <Sparkles className="mr-2 h-5 w-5" />
+                        Claim Founding Member Access ✨
+                      </Button>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await setAssessmentCompleted();
+                        router.push("/dashboard");
+                      }}
+                      className="min-h-[44px] touch-manipulation text-sm text-muted-foreground underline decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-foreground/50"
+                    >
+                      Continue with 3 free practices
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -228,13 +365,14 @@ function Toggle({
       role="switch"
       aria-checked={checked}
       onClick={() => onCheckedChange(!checked)}
-      className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+      className={`relative flex h-11 min-h-[44px] w-14 min-w-[44px] shrink-0 touch-manipulation items-center rounded-full transition-colors tap-scale ${
         checked ? "bg-brand-rose" : "bg-muted"
       }`}
     >
       <motion.span
-        className="absolute top-1 left-1 h-5 w-5 rounded-full bg-white shadow"
-        animate={{ x: checked ? 20 : 0 }}
+        className="absolute left-1 h-6 w-6 rounded-full bg-white shadow"
+        style={{ willChange: "transform", transform: "translateZ(0)" }}
+        animate={{ x: checked ? 22 : 0 }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
       />
     </button>
@@ -244,11 +382,13 @@ function Toggle({
 function AssessmentCapture({
   basicStepVideoUrl,
   teacherFrames,
+  consentGranted,
   onComplete,
   onBack,
 }: {
   basicStepVideoUrl: string;
   teacherFrames: PoseFrame[];
+  consentGranted: boolean;
   onComplete: (motion: PoseData) => void;
   onBack: () => void;
 }) {
@@ -283,22 +423,35 @@ function AssessmentCapture({
   }, []);
 
   useEffect(() => {
+    if (!consentGranted) return;
     startWebcam();
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [startWebcam]);
+  }, [consentGranted, startWebcam]);
 
+  useEffect(() => {
+    const v = teacherVideoRef.current;
+    if (v) {
+      v.setAttribute("webkit-playsinline", "true");
+      v.setAttribute("playsinline", "true");
+    }
+  }, [basicStepVideoUrl]);
+  useEffect(() => {
+    const v = webcamVideoRef.current;
+    if (v) {
+      v.setAttribute("webkit-playsinline", "true");
+      v.setAttribute("playsinline", "true");
+    }
+  }, []);
   useEffect(() => {
     const v = teacherVideoRef.current;
     if (v && basicStepVideoUrl) {
       const onTimeUpdate = () => {
         const t = v.currentTime;
-        const idx = Math.min(
-          Math.floor(t * FPS),
-          teacherFrames.length - 1
-        );
-        teacherFrameRef.current = teacherFrames[idx] ?? teacherFrames[0] ?? null;
+        const idx = Math.min(Math.floor(t * FPS), teacherFrames.length - 1);
+        teacherFrameRef.current =
+          teacherFrames[idx] ?? teacherFrames[0] ?? null;
       };
       v.addEventListener("timeupdate", onTimeUpdate);
       return () => v.removeEventListener("timeupdate", onTimeUpdate);
@@ -332,7 +485,8 @@ function AssessmentCapture({
           Math.floor((ts / 1000) * FPS),
           teacherFrames.length - 1
         );
-        teacherFrameRef.current = teacherFrames[idx] ?? teacherFrames[0] ?? null;
+        teacherFrameRef.current =
+          teacherFrames[idx] ?? teacherFrames[0] ?? null;
       }
       if (ts >= CAPTURE_DURATION_SEC * 1000) {
         setRecording(false);
@@ -447,7 +601,12 @@ function AssessmentCapture({
           />
         </div>
         <div className="flex items-center justify-between gap-4">
-          <Button variant="outline" size="sm" onClick={onBack}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[44px] min-w-[44px] touch-manipulation"
+            onClick={onBack}
+          >
             Back
           </Button>
           {countDown !== null ? (
@@ -459,7 +618,7 @@ function AssessmentCapture({
             </span>
           ) : (
             <Button
-              className="rounded-full bg-brand-rose text-white hover:opacity-90"
+              className="min-h-[44px] min-w-[44px] touch-manipulation rounded-full bg-brand-rose text-white hover:opacity-90"
               onClick={handleStart}
             >
               <Circle className="mr-2 h-4 w-4 fill-current" />
@@ -493,11 +652,10 @@ function ProcessingStep({
         onResult("Seedling", 0);
         return;
       }
-      const result = compareStudentToTeacher(
-        studentMotion,
-        teacherMotion,
-        { teacherPartnerId: 0, studentPartnerId: 0 }
-      );
+      const result = compareStudentToTeacher(studentMotion, teacherMotion, {
+        teacherPartnerId: 0,
+        studentPartnerId: 0,
+      });
       const level = getAssessmentLevel(result, 0);
       const score = Math.round(result.score * 100);
       onResult(level, score);

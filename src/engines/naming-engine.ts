@@ -1,6 +1,7 @@
 /**
- * Creative Director: generates boutique-style session names from BPM, genre, and moves.
- * Used when a student saves a practice session to suggest aspirational, artistic names.
+ * Session Naming Engine (The Creative Director): generates boutique-style session
+ * names from BPM, genre, and moves. Test users see engaging names like "Midnight
+ * Salsa" or "Golden Salsa" for practice recordings instead of generic IDs.
  */
 
 export interface NamingInput {

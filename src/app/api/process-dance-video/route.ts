@@ -1,29 +1,25 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import type { PoseData } from "@/types/dance";
 
 /**
- * Expected JSON response shape from the Python extraction bridge.
- * Must match PoseData (MotionDNA) so motion_dna can be stored in dance_library.
+ * Process-dance-video: extraction edge function.
+ * Guardian: Only admin or teacher role can trigger. Uses Service Role to update dance_library.
+ * Supply chain: Sent to AI → AI Processing → Data Saved.
  *
- * @see src/types/dance.ts (PoseData, PoseFrame, Joint3D, MotionMetadata)
- *
- * Shape:
- * {
- *   frames: Array<{
- *     timestamp: number;        // ms or seconds (consistent within payload)
- *     partner_id: 0 | 1;       // 0 = Lead, 1 = Follower
- *     joints: Record<string, { x: number; y: number; z: number; visibility: number }>;
- *     metrics: { rhythm_pulse: number; joint_angles: Record<string, number> };
- *   }>;
- *   durationMs: number;
- *   source?: "teacher" | "student" | "reference";
- *   metadata?: { beat_timestamps?: number[] };
- * }
+ * Expected JSON response from Python bridge: PoseData (MotionDNA).
+ * @see src/types/dance.ts (PoseData, PoseFrame, Joint3D)
  */
 export type PythonBridgePoseDataResponse = PoseData;
 
 const EXTRACTION_SERVICE_URL = process.env.EXTRACTION_SERVICE_URL;
+const EXTRACTION_API_KEY = process.env.EXTRACTION_API_KEY;
+const EXTRACTION_TIMEOUT_MS = 90_000;
+const EXTRACTION_RETRIES = 2;
+const EXTRACTION_RETRY_DELAY_MS = 3_000;
+
+const LOG_PREFIX = "[process-dance-video]";
 
 export interface ProcessDanceVideoBody {
   /** dance_library row id to update (preferred). */
@@ -32,13 +28,79 @@ export interface ProcessDanceVideoBody {
   videoUrl?: string;
 }
 
+async function isAdminOrTeacher(): Promise<boolean> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const role = (user.app_metadata?.role as string) ?? "";
+  return role === "admin" || role === "teacher";
+}
+
+async function fetchWithTimeoutAndRetry(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number,
+  retries: number,
+  retryDelayMs: number
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      return res;
+    } catch (e) {
+      clearTimeout(timeout);
+      lastError = e instanceof Error ? e : new Error(String(e));
+      if (attempt < retries) {
+        console.warn(
+          `${LOG_PREFIX} Attempt ${attempt + 1}/${retries + 1} failed, retrying in ${retryDelayMs}ms...`,
+          lastError.message
+        );
+        await new Promise((r) => setTimeout(r, retryDelayMs));
+      }
+    }
+  }
+  throw lastError ?? new Error("Fetch failed");
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as ProcessDanceVideoBody;
     const { rowId, videoUrl: bodyVideoUrl } = body;
 
-    const supabase = await createClient();
+    const allowed = await isAdminOrTeacher();
+    if (!allowed) {
+      console.warn(
+        `${LOG_PREFIX} Unauthorized: caller is not admin or teacher`
+      );
+      return NextResponse.json(
+        { ok: false, error: "Only admin or teacher can trigger extraction" },
+        { status: 403 }
+      );
+    }
 
+    if (!EXTRACTION_SERVICE_URL) {
+      console.warn(`${LOG_PREFIX} EXTRACTION_SERVICE_URL not configured`);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "EXTRACTION_SERVICE_URL not configured",
+          expectedResponseShape:
+            "PoseData: { frames: PoseFrame[], durationMs: number, source?, metadata? }",
+        },
+        { status: 503 }
+      );
+    }
+
+    const supabase = await createClient();
     let targetId: string;
     let videoUrl: string;
 
@@ -55,7 +117,7 @@ export async function POST(request: Request) {
         );
       }
       targetId = row.id;
-      videoUrl = row.video_url;
+      videoUrl = row.video_url ?? "";
     } else if (bodyVideoUrl) {
       const { data: row, error: fetchError } = await supabase
         .from("dance_library")
@@ -69,7 +131,7 @@ export async function POST(request: Request) {
         );
       }
       targetId = row.id;
-      videoUrl = row.video_url;
+      videoUrl = row.video_url ?? "";
     } else {
       return NextResponse.json(
         { ok: false, error: "Provide rowId or videoUrl" },
@@ -77,48 +139,85 @@ export async function POST(request: Request) {
       );
     }
 
-    let motionDna: PythonBridgePoseDataResponse;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (EXTRACTION_API_KEY) {
+      headers["Authorization"] = `Bearer ${EXTRACTION_API_KEY}`;
+      headers["X-API-Key"] = EXTRACTION_API_KEY;
+    }
 
-    if (EXTRACTION_SERVICE_URL) {
-      const res = await fetch(EXTRACTION_SERVICE_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_url: videoUrl }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `Extraction service error: ${res.status} ${text}`,
-          },
-          { status: 502 }
-        );
-      }
-      const data = (await res.json()) as unknown;
-      if (!isValidPoseData(data)) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "Extraction service returned invalid PoseData shape",
-          },
-          { status: 502 }
-        );
-      }
-      motionDna = data as PythonBridgePoseDataResponse;
-    } else {
+    console.info(
+      `${LOG_PREFIX} [Supply Chain] Sent to AI — rowId=${targetId} video_url=${videoUrl.slice(0, 60)}...`
+    );
+
+    let res: Response;
+    try {
+      res = await fetchWithTimeoutAndRetry(
+        EXTRACTION_SERVICE_URL,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ video_url: videoUrl }),
+        },
+        EXTRACTION_TIMEOUT_MS,
+        EXTRACTION_RETRIES,
+        EXTRACTION_RETRY_DELAY_MS
+      );
+    } catch (e) {
+      console.error(
+        `${LOG_PREFIX} [Supply Chain] AI request failed after timeout/retries:`,
+        e instanceof Error ? e.message : e
+      );
       return NextResponse.json(
         {
           ok: false,
-          error: "EXTRACTION_SERVICE_URL not configured",
-          expectedResponseShape:
-            "PoseData: { frames: PoseFrame[], durationMs: number, source?, metadata? }",
+          error:
+            e instanceof Error && e.name === "AbortError"
+              ? "Extraction service timeout (cold start or slow response)"
+              : String(e instanceof Error ? e.message : e),
         },
-        { status: 503 }
+        { status: 502 }
       );
     }
 
-    const { error: updateError } = await supabase
+    console.info(
+      `${LOG_PREFIX} [Supply Chain] AI Processing — status=${res.status} rowId=${targetId}`
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(
+        `${LOG_PREFIX} [Supply Chain] AI returned error: ${res.status} ${text.slice(0, 200)}`
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Extraction service error: ${res.status} ${text.slice(0, 200)}`,
+        },
+        { status: 502 }
+      );
+    }
+
+    const data = (await res.json()) as unknown;
+    if (!isValidPoseData(data)) {
+      console.error(
+        `${LOG_PREFIX} [Supply Chain] AI returned invalid PoseData shape for rowId=${targetId}`
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Extraction service returned invalid PoseData shape",
+        },
+        { status: 502 }
+      );
+    }
+
+    const motionDna = data as PythonBridgePoseDataResponse;
+    const frameCount = motionDna.frames?.length ?? 0;
+
+    const admin = createServiceRoleClient();
+    const { error: updateError } = await admin
       .from("dance_library")
       .update({
         motion_dna: motionDna,
@@ -128,20 +227,28 @@ export async function POST(request: Request) {
       .eq("id", targetId);
 
     if (updateError) {
+      console.error(
+        `${LOG_PREFIX} [Supply Chain] Data Saved failed:`,
+        updateError.message
+      );
       return NextResponse.json(
         { ok: false, error: updateError.message },
         { status: 500 }
       );
     }
 
+    console.info(
+      `${LOG_PREFIX} [Supply Chain] Data Saved — rowId=${targetId} status=needs_labeling frames=${frameCount}`
+    );
+
     return NextResponse.json({
       ok: true,
       rowId: targetId,
       status: "needs_labeling",
-      frameCount: motionDna.frames?.length ?? 0,
+      frameCount,
     });
   } catch (e) {
-    console.error("[process-dance-video]", e);
+    console.error(`${LOG_PREFIX}`, e);
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
       { status: 500 }

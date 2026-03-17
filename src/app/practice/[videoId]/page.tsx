@@ -37,9 +37,12 @@ export default async function PracticeVideoPage({
   const genre = row.genre === "bachata" ? "Bachata" : "Salsa";
 
   return (
-    <main className="container py-6">
-      <p className="mb-4">
-        <Link href="/library" className="text-sm text-primary underline">
+    <main className="container min-h-svh py-6 pb-safe pt-safe">
+      <p className="mb-4 pt-1">
+        <Link
+          href="/library"
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-sm text-primary underline tap-scale active:scale-[0.98]"
+        >
           ← Back to library
         </Link>
       </p>

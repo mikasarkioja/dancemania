@@ -156,7 +156,11 @@ export function AdminUpload() {
         data: { publicUrl },
       } = supabase.storage.from(VIDEOS_BUCKET).getPublicUrl(uploadData.path);
 
-      const { error: insertError } = await supabase
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const { data: insertRow, error: insertError } = await supabase
         .from("dance_library")
         .insert({
           slug: finalSlug,
@@ -167,7 +171,11 @@ export function AdminUpload() {
           bpm: bpm.trim() ? parseInt(bpm, 10) : null,
           motion_dna: null,
           tracking_seeds: trackingSeeds,
-        });
+          status: "pending_analysis",
+          ...(user?.id ? { uploaded_by: user.id } : {}),
+        })
+        .select("id")
+        .single();
 
       if (insertError) {
         setError(insertError.message);
@@ -176,6 +184,15 @@ export function AdminUpload() {
       }
 
       setSuccess(true);
+
+      if (insertRow?.id) {
+        fetch("/api/process-dance-video", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rowId: insertRow.id }),
+        }).catch(() => {});
+      }
+
       setTitle("");
       setSlug("");
       setBpm("");

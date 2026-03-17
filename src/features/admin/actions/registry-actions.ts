@@ -5,8 +5,9 @@
  *
  * Save to Registry: fetches motion_dna for the selected video/segment,
  * slices by start/end time, computes signature via computeMoveSignature,
- * validates the 3 critical curves, and upserts move_registry with
- * biomechanical_profile and genre from the source video.
+ * validates the 3 critical curves (BiomechanicalProfile from @/types/dance),
+ * and inserts move_registry with biomechanical_profile as the Gold Standard
+ * for Scanner and for practice curve-delta coaching. Genre inherited from source video.
  */
 
 import { createClient } from "@/lib/supabase/server";

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { DashboardView } from "@/features/dashboard/components/DashboardView";
 import { getAppGenre } from "@/lib/genre-server";
+import { getWelcomeKitStatus } from "@/features/user/actions/welcome-kit-actions";
 
 const BLOOM_GOAL_SESSIONS_PER_WEEK = 5;
 
@@ -32,12 +33,23 @@ export default async function StudentDashboardPage() {
 
   const { data: sessions } = await supabase
     .from("practice_sessions")
-    .select("id, video_id, created_at, score_total")
+    .select("id, video_id, created_at, score_total, session_name")
     .eq("user_id", user.id)
     .gte("created_at", sevenDaysAgo.toISOString())
     .order("created_at", { ascending: false });
 
   const sessionsList = sessions ?? [];
+  const recentSessions = sessionsList.slice(0, 5).map((s) => ({
+    id: s.id,
+    videoId: s.video_id,
+    createdAt: s.created_at,
+    scoreTotal: s.score_total ?? 0,
+    sessionName:
+      s.session_name ??
+      (s.created_at
+        ? `Session ${new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+        : "Practice session"),
+  }));
 
   const chartData = (() => {
     const byDay: Record<string, { total: number; count: number }> = {};
@@ -121,12 +133,16 @@ export default async function StudentDashboardPage() {
   const moveOfTheDay =
     moves.length > 0 ? moves[Math.floor(Math.random() * moves.length)] : null;
 
+  const { shouldShow: shouldShowWelcomeKit } = await getWelcomeKitStatus();
+
   return (
     <DashboardView
       userName={userName}
+      shouldShowWelcomeKit={shouldShowWelcomeKit}
       bloomProgress={bloomProgress}
       chartData={chartData}
       continueLearningVideos={continueLearningVideos}
+      recentSessions={recentSessions}
       moveOfTheDay={
         moveOfTheDay
           ? {

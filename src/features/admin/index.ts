@@ -8,3 +8,9 @@ export { AdminUpload } from "./components/AdminUpload";
 export { PartnerOverlay } from "./components/PartnerOverlay";
 export { VideoLabeler } from "./components/VideoLabeler";
 export { VideoReviewer } from "./components/VideoReviewer";
+export {
+  AdminVerificationTinder,
+  suggestedLabelToProposal,
+  suggestedSegmentToProposal,
+  type AI_PROPOSAL,
+} from "./components/AdminVerificationTinder";
