@@ -13,10 +13,6 @@ const LEFT_KNEE_KEY = "left_knee";
 const RIGHT_KNEE_KEY = "right_knee";
 const LEFT_SHOULDER_KEY = "left_shoulder";
 const RIGHT_SHOULDER_KEY = "right_shoulder";
-const LEFT_ELBOW_KEY = "left_elbow";
-const RIGHT_ELBOW_KEY = "right_elbow";
-const LEFT_WRIST_KEY = "left_wrist";
-const RIGHT_WRIST_KEY = "right_wrist";
 
 /** 3D point for geometry (joint position). */
 export interface Point3D {

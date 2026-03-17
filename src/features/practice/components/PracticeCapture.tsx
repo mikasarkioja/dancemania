@@ -156,11 +156,7 @@ export function PracticeCapture({
   instructions = [],
 }: PracticeCaptureProps) {
   const router = useRouter();
-  const {
-    isProcessing,
-    result: workerResult,
-    calibrateAndCompare,
-  } = useComparisonWorker();
+  const { isProcessing, calibrateAndCompare } = useComparisonWorker();
   const teacherVideoRef = useRef<HTMLVideoElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const webcamCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -202,6 +198,9 @@ export function PracticeCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const teacherFrameRef = useRef<PoseFrame | null>(null);
+  const [privacyConsentGranted, setPrivacyConsentGranted] = useState<
+    boolean | null
+  >(null);
 
   const teacherFrames = useMemo(
     () => motionDna?.frames?.filter((f) => f.partner_id === 0) ?? [],
@@ -475,7 +474,7 @@ export function PracticeCapture({
                 correctionTips: correctionTips.map((t) => ({
                   message: t.message,
                   count: 1,
-                  severity: t.severity,
+                  severity: t.severity ?? "medium",
                 })),
                 metrics: {
                   tensionAvg: res.harmonyScore / 100,
@@ -517,9 +516,6 @@ export function PracticeCapture({
     calibrateAndCompare,
   ]);
 
-  const [privacyConsentGranted, setPrivacyConsentGranted] = useState<
-    boolean | null
-  >(null);
   const [consentLoading, setConsentLoading] = useState(false);
   const [savedSessionName, setSavedSessionName] = useState<string | null>(null);
   const [displaySessionName, setDisplaySessionNameOptimistic] = useOptimistic(
