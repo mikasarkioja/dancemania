@@ -4,6 +4,41 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Sentinel, 3-Free Gate, MAL & Coaching (2025-03-17)
+
+### MVP gap & revenue gating
+
+- **`docs/MVP_GAP_ANALYSIS.md`:** Updated readiness to **74%**. Post-Assessment Upsell and Delete/Erasure marked done. Remaining: Stripe checkout, 3-free-practices gate. Added §8 Current Development Gap with effort estimates.
+- **3-free-practices gate:** `checkPracticeEntitlement()` in `src/features/practice/actions/usage-actions.ts` counts `practice_sessions` per user; returns `canPractice` (true if count &lt; 3 or `profiles.is_premium`), `currentCount`, `remaining`, `isBypass` (admin/teacher skip). **EliteAccessModal** (glassmorphism, Rose Gold): “You’ve reached the limit of the Digital Mirror”; CTA “Request Founding Access” logs “Upsell Click” to `analytics_events`. **PracticeCapture** gates camera/MediaPipe on entitlement; shows modal when locked. **Dashboard** shows “X of 3 Free Practices Remaining” with Champagne/Gold progress bar; admin/teacher bypass (counter hidden). **Migration** `20250317000017`: `profiles.is_premium`, `analytics_events` table (RLS: insert/select own).
+
+### Model-Assisted Labeling (SalsaAgent)
+
+- **Types:** `src/types/mal.ts` — `SalsaAgentMetadata`, `AI_PROPOSAL`, `LabelSuggestion`, `MALSegment`, `BiomechanicalSummary`, `salsaAgentMetadataToTinderShape`, etc.
+- **Migration** `20250317000016`: `dance_library.ai_proposals` JSONB (default `[]`), GIN index.
+- **Mock:** `src/lib/mal/mock-salsa-agent.ts` — `generateMockSalsaAgentProposals(videoId)` for testing.
+- **Promotion:** `src/features/admin/actions/mal-actions.ts` — `promoteProposalToRegistry(videoId, proposal)` slices motion_dna, computes signature, inserts move_registry + video_moves, marks proposal approved in `ai_proposals`.
+- **UI:** `LabelVerificationStackMAL.tsx` normalizes SalsaAgentMetadata to Tinder shape; Approve → promote, Reject → local state. Admin label page: “MAL (SalsaAgent)” and “Load mock SalsaAgent proposals”. **`docs/LABEL_VERIFICATION_AUDIT.md`** updated.
+
+### Digital Sentinel: real-time AI coaching
+
+- **PracticeCapture:** After save, uses **returned** `generateAndSaveCoachingFeedback()` result; sets `lastCoachingResult.proTips` from AI when present, else static fallback; passes `feedbackFailed` when AI returns no tips.
+- **CoachingCard:** Prioritizes **AI proTips** over static; **Sentinel Insight** header by `worstJointGroup` (“Focus on Hip Timing” / Footwork / Frame). **Precision Meter** (Champagne → Rose Gold gradient). Framer Motion: card “analyzing → revealed”, staggered tip reveal. **General Mastery** fallback when `feedbackFailed`: amber card, “Keep consistency—your movement is being refined.” **`generateAndSaveCoachingFeedback`:** Guardian: `getUser()` at start; select/update scoped by `.eq("user_id", user.id)`; logs when no LLM response.
+- **Past sessions:** `getSessionCoachingFeedback(sessionId)` in `src/features/practice/actions/session-actions.ts` (Guardian: RLS); returns `proTips`, `worstJointGroup`, `harmonyScore` from `practice_sessions.metrics`. Exported from practice feature.
+
+### Auth & identity (Sentinel audit)
+
+- **`docs/AUTH_AUDIT.md`:** Middleware sync, client/server Supabase, server action security, RLS scan, redirect/callback. Tracks which actions call `getUser()`; recommends tightening `dance_library` INSERT/UPDATE to admin/teacher.
+- **Middleware:** Always call `getUser()` (not `getSession()`) so JWT is validated/refreshed and cookies written to response — **fixes login desync**.
+- **Auth callback** `src/app/auth/callback/route.ts`: PKCE `exchangeCodeForSession(code)`; **safe redirect** via `isSafeRedirectPath(next)` (default `/dashboard`); **double-callback** handled (if session exists, redirect without re-exchange). Error redirect to `/auth/auth-error?message=...`. **`src/app/auth/auth-error/page.tsx`** added. Comment: cookie commit via cookieStore merged into `NextResponse.redirect()`.
+- **Open redirect:** Callback validates `next` (starts with `/`, not `//`, no `\`).
+
+### Cookie integrity diagnostic
+
+- **`src/app/api/auth/inspect-cookies/route.ts`:** Temporary GET route; reads `await cookies()`, returns **metadata only** (name, present, valueLength, isSupabaseAuth). **No JWT or values.** `sentinelReport`: summary, expectedFlags (Secure, HttpOnly, SameSite, Partitioned), flagMismatches, recommendations, `metadataChecksPass`. Server log: `[Sentinel] Cookie integrity check` (counts/names only).
+- **`docs/COOKIE_INTEGRITY_AUDIT.md`:** PKCE handshake and redirect commit behavior; middleware explicit cookie response; Safari/third-party cookie note; how to verify flags in DevTools.
+
+---
+
 ## Boutique mobile & MAL audit (2025-03)
 
 ### Viewport & browser bar (svh)

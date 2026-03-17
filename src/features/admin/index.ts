@@ -14,3 +14,6 @@ export {
   suggestedSegmentToProposal,
   type AI_PROPOSAL,
 } from "./components/AdminVerificationTinder";
+export { LabelVerificationCard } from "./components/LabelVerificationCard";
+export { LabelVerificationStack } from "./components/LabelVerificationStack";
+export { LabelVerificationStackMAL } from "./components/LabelVerificationStackMAL";

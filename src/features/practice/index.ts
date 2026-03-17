@@ -5,3 +5,8 @@
 
 export { PracticeCapture } from "./components/PracticeCapture";
 export { PracticePlayer } from "./components/PracticePlayer";
+export {
+  getSessionCoachingFeedback,
+  type SessionCoachingFeedback,
+  type ComparisonJointGroup,
+} from "./actions/session-actions";

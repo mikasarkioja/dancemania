@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -14,18 +15,35 @@ export type SignInWithMagicLinkResult =
   | { ok: false; error: string };
 
 /**
+ * Resolve the site origin for magic link redirect. Prefer request host so
+ * production always redirects back to the actual domain (not localhost).
+ */
+async function getRedirectOrigin(): Promise<string> {
+  try {
+    const h = await headers();
+    const host = h.get("x-forwarded-host") ?? h.get("host");
+    const proto = h.get("x-forwarded-proto") ?? "https";
+    if (host) return `${proto === "https" ? "https" : "http"}://${host}`;
+  } catch {
+    // headers() can throw in some edge/static contexts
+  }
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof process.env.VERCEL_URL === "string"
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000")
+  );
+}
+
+/**
  * Send magic link to email. Call from login page.
- * Redirect URL should point to /auth/callback?next=/dashboard
+ * Redirect URL points to /auth/callback?next=/dashboard on the same origin as the request.
  */
 export async function signInWithMagicLink(
   email: string
 ): Promise<SignInWithMagicLinkResult> {
   const supabase = await createClient();
-  const origin =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (typeof process.env.VERCEL_URL === "string"
-      ? `https://${process.env.VERCEL_URL}`
-      : "http://localhost:3000");
+  const origin = await getRedirectOrigin();
   const redirectTo = `${origin}/auth/callback?next=/dashboard`;
 
   const { error } = await supabase.auth.signInWithOtp({

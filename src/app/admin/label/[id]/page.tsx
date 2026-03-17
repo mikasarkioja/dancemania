@@ -23,7 +23,7 @@ export default async function AdminLabelVideoPage({
     supabase
       .from("dance_library")
       .select(
-        "id, slug, title, video_url, instructions, motion_dna, suggested_labels"
+        "id, slug, title, video_url, instructions, motion_dna, suggested_labels, bpm, genre"
       )
       .eq("id", id)
       .single(),
@@ -62,6 +62,8 @@ export default async function AdminLabelVideoPage({
         suggestedLabels={suggestedLabels}
         patterns={patterns}
         isAuthenticated={isAuthenticated}
+        bpm={row.bpm ?? null}
+        genre={row.genre ?? null}
       />
     </main>
   );

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { DashboardView } from "@/features/dashboard/components/DashboardView";
 import { getAppGenre } from "@/lib/genre-server";
 import { getWelcomeKitStatus } from "@/features/user/actions/welcome-kit-actions";
+import { checkPracticeEntitlement } from "@/features/practice/actions/usage-actions";
 
 const BLOOM_GOAL_SESSIONS_PER_WEEK = 5;
 
@@ -134,6 +135,7 @@ export default async function StudentDashboardPage() {
     moves.length > 0 ? moves[Math.floor(Math.random() * moves.length)] : null;
 
   const { shouldShow: shouldShowWelcomeKit } = await getWelcomeKitStatus();
+  const entitlement = await checkPracticeEntitlement();
 
   return (
     <DashboardView
@@ -143,6 +145,14 @@ export default async function StudentDashboardPage() {
       chartData={chartData}
       continueLearningVideos={continueLearningVideos}
       recentSessions={recentSessions}
+      practiceEntitlement={
+        entitlement.isBypass
+          ? null
+          : {
+              currentCount: entitlement.currentCount,
+              remaining: entitlement.remaining,
+            }
+      }
       moveOfTheDay={
         moveOfTheDay
           ? {

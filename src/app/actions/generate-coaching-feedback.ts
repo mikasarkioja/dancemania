@@ -25,8 +25,18 @@ export async function generateAndSaveCoachingFeedback(
   comparisonResult: ComparisonResult,
   genre: DanceGenre
 ): Promise<CoachingFeedback | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) return null;
+
   const focusAreas = getCoachingFocusAreas({ comparisonResult, genre });
-  const { system, user } = buildCoachingPrompt({ comparisonResult, genre });
+  const { system, user: userPrompt } = buildCoachingPrompt({
+    comparisonResult,
+    genre,
+  });
 
   let llmText = "";
 
@@ -45,7 +55,7 @@ export async function generateAndSaveCoachingFeedback(
           model: "gpt-4o-mini",
           messages: [
             { role: "system", content: system },
-            { role: "user", content: user },
+            { role: "user", content: userPrompt },
           ],
           max_tokens: 400,
         }),
@@ -73,7 +83,7 @@ export async function generateAndSaveCoachingFeedback(
           model: "claude-3-haiku-20240307",
           max_tokens: 400,
           system,
-          messages: [{ role: "user", content: user }],
+          messages: [{ role: "user", content: userPrompt }],
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -88,15 +98,23 @@ export async function generateAndSaveCoachingFeedback(
   }
 
   const feedback = parseCoachingResponse(llmText || "[]", focusAreas);
+  if (!llmText) {
+    console.warn(
+      "[coaching-feedback] No LLM response; using default tips for session",
+      sessionId
+    );
+  }
 
-  const supabase = await createClient();
   const { data: row } = await supabase
     .from("practice_sessions")
     .select("metrics")
     .eq("id", sessionId)
+    .eq("user_id", user.id)
     .single();
 
-  const existingMetrics = (row?.metrics as Record<string, unknown>) ?? {};
+  if (!row) return feedback;
+
+  const existingMetrics = (row.metrics as Record<string, unknown>) ?? {};
   const updatedMetrics = {
     ...existingMetrics,
     coaching_feedback: {
@@ -109,7 +127,8 @@ export async function generateAndSaveCoachingFeedback(
   await supabase
     .from("practice_sessions")
     .update({ metrics: updatedMetrics })
-    .eq("id", sessionId);
+    .eq("id", sessionId)
+    .eq("user_id", user.id);
 
   return feedback;
 }

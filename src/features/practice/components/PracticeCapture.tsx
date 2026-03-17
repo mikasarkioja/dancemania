@@ -48,6 +48,8 @@ import {
   grantPrivacyConsent,
 } from "@/features/user/actions/consent-actions";
 import { PrivacyConsentModal } from "@/features/user/components/PrivacyConsentModal";
+import { checkPracticeEntitlement } from "../actions/usage-actions";
+import { EliteAccessModal } from "./EliteAccessModal";
 
 const FPS = 30;
 const TEACHER_GHOST_COLOR = "rgba(196, 181, 253, 0.5)";
@@ -189,6 +191,8 @@ export function PracticeCapture({
       worstJointGroup: JointGroup;
       timingOffsetMs?: number;
     };
+    /** True when AI feedback failed and we fell back to static tips (for General Mastery card). */
+    feedbackFailed?: boolean;
   } | null>(null);
   const [namePickerSessionId, setNamePickerSessionId] = useState<string | null>(
     null
@@ -201,6 +205,13 @@ export function PracticeCapture({
   const [privacyConsentGranted, setPrivacyConsentGranted] = useState<
     boolean | null
   >(null);
+  const [entitlement, setEntitlement] = useState<{
+    canPractice: boolean;
+    currentCount: number;
+    remaining: number;
+    isBypass: boolean;
+  } | null>(null);
+  const [entitlementLoading, setEntitlementLoading] = useState(true);
 
   const teacherFrames = useMemo(
     () => motionDna?.frames?.filter((f) => f.partner_id === 0) ?? [],
@@ -235,8 +246,15 @@ export function PracticeCapture({
   }, []);
 
   useEffect(() => {
-    getPrivacyConsentGranted().then(setPrivacyConsentGranted);
+    checkPracticeEntitlement()
+      .then(setEntitlement)
+      .finally(() => setEntitlementLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (entitlement?.canPractice !== true) return;
+    getPrivacyConsentGranted().then(setPrivacyConsentGranted);
+  }, [entitlement?.canPractice]);
 
   const startWebcam = useCallback(async () => {
     try {
@@ -256,14 +274,15 @@ export function PracticeCapture({
   }, []);
 
   useEffect(() => {
-    if (privacyConsentGranted !== true) return;
+    if (entitlement?.canPractice !== true || privacyConsentGranted !== true)
+      return;
     startWebcam();
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [privacyConsentGranted, startWebcam]);
+  }, [entitlement?.canPractice, privacyConsentGranted, startWebcam]);
 
   const tick = useCallback(() => {
     const canvas = webcamCanvasRef.current;
@@ -467,7 +486,7 @@ export function PracticeCapture({
             .select("id")
             .single();
           if (!insertError && sessionRow?.id) {
-            await generateAndSaveCoachingFeedback(
+            const aiFeedback = await generateAndSaveCoachingFeedback(
               sessionRow.id,
               {
                 score: res.harmonyScore / 100,
@@ -484,6 +503,17 @@ export function PracticeCapture({
                 },
               },
               genre
+            );
+            setLastCoachingResult((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    proTips: aiFeedback?.proTips?.length
+                      ? aiFeedback.proTips
+                      : getProTipsForJointGroup(res.worstJointGroup),
+                    feedbackFailed: !aiFeedback?.proTips?.length,
+                  }
+                : prev
             );
             // Creative Director: auto-propose 3 engaging names (naming-engine); user picks with single tap
             const naming = await generateSessionNames({
@@ -558,286 +588,310 @@ export function PracticeCapture({
     }
   }, [bpm, genre, instructions]);
 
+  const showEliteGate = entitlement && !entitlement.canPractice;
+  const showPrivacyConsent =
+    entitlement?.canPractice === true && privacyConsentGranted === false;
+
   return (
     <div
       className="relative flex min-h-svh flex-col gap-4 pb-safe pt-safe"
       style={{ minHeight: "100svh" }}
     >
-      {privacyConsentGranted === false && (
+      {entitlementLoading && (
+        <div className="flex flex-1 items-center justify-center">
+          <Logo size={48} className="animate-pulse text-muted-foreground/60" />
+        </div>
+      )}
+      {showEliteGate && (
+        <EliteAccessModal onDismiss={() => router.push("/library")} />
+      )}
+      {showPrivacyConsent && (
         <PrivacyConsentModal
           onAccept={handleAcceptPrivacyConsent}
           loading={consentLoading}
         />
       )}
-      <AnimatePresence>
-        {isProcessing && (
-          <motion.div
-            key="refining-overlay"
-            className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
-            style={{ willChange: "transform", transform: "translateZ(0)" }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-          >
-            <motion.div
-              className="absolute inset-0 bg-brand-champagne/90"
-              style={{ backgroundColor: "rgba(253, 242, 248, 0.92)" }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-            />
-            <motion.div
-              className="relative flex flex-col items-center justify-center rounded-[2rem] border border-white/40 bg-white/30 px-12 py-10 shadow-2xl backdrop-blur-xl"
-              style={{
-                minWidth: "min(85vw, 300px)",
-                minHeight: "min(50vmin, 220px)",
-                willChange: "transform",
-                transform: "translateZ(0)",
-              }}
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.98 }}
-              transition={{
-                duration: 0.4,
-                ease: [0.4, 0, 0.2, 1],
-              }}
-            >
+      {!entitlementLoading && !showEliteGate && (
+        <>
+          <AnimatePresence>
+            {isProcessing && (
               <motion.div
+                key="refining-overlay"
+                className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
                 style={{ willChange: "transform", transform: "translateZ(0)" }}
-                animate={{
-                  scale: [1, 1.05, 1],
-                  opacity: [0.9, 1, 0.9],
-                }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
               >
-                <Logo size={80} className="text-brand-rose" />
-              </motion.div>
-              <motion.p
-                className="mt-6 text-center font-serif text-lg lowercase tracking-wide text-foreground/90"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15, duration: 0.35 }}
-              >
-                Refining your signature... ✨
-              </motion.p>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div className="grid gap-4 md:grid-cols-1">
-        <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-heading text-lg tracking-airy text-primary">
-              {title}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="relative aspect-video w-full bg-black">
-              <video
-                ref={teacherVideoRef}
-                src={videoUrl}
-                className="h-full w-full object-contain"
-                playsInline
-                muted
-                loop
-                preload="metadata"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
-          <CardHeader className="pb-2">
-            <CardTitle className="font-heading text-lg tracking-airy text-primary">
-              Your camera
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="relative aspect-video w-full bg-black">
-              <video
-                ref={webcamVideoRef}
-                className="absolute inset-0 h-full w-full object-contain mirror"
-                playsInline
-                muted
-                style={{ transform: "scaleX(-1)" }}
-              />
-              <canvas
-                ref={webcamCanvasRef}
-                className="absolute inset-0 h-full w-full object-contain"
-                width={640}
-                height={480}
-                style={{ transform: "scaleX(-1)" }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <motion.div
-                  className="rounded-full bg-primary/40 blur-xl border-2 border-primary/60"
+                  className="absolute inset-0 bg-brand-champagne/90"
+                  style={{ backgroundColor: "rgba(253, 242, 248, 0.92)" }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                />
+                <motion.div
+                  className="relative flex flex-col items-center justify-center rounded-[2rem] border border-white/40 bg-white/30 px-12 py-10 shadow-2xl backdrop-blur-xl"
                   style={{
-                    width: 80 + similarity * 120,
-                    height: 80 + similarity * 120,
-                    boxShadow: `0 0 ${40 + similarity * 60}px hsl(var(--primary) / 0.6)`,
+                    minWidth: "min(85vw, 300px)",
+                    minHeight: "min(50vmin, 220px)",
                     willChange: "transform",
                     transform: "translateZ(0)",
                   }}
-                  animate={{
-                    scale: 0.8 + similarity * 0.4,
-                    opacity: 0.3 + similarity * 0.5,
+                  initial={{ opacity: 0, scale: 0.96 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{
+                    duration: 0.4,
+                    ease: [0.4, 0, 0.2, 1],
                   }}
-                  transition={{ type: "spring", stiffness: 200, damping: 20 }}
-                />
-              </div>
-              <BloomSparkle show={showSparkle} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                >
+                  <motion.div
+                    style={{
+                      willChange: "transform",
+                      transform: "translateZ(0)",
+                    }}
+                    animate={{
+                      scale: [1, 1.05, 1],
+                      opacity: [0.9, 1, 0.9],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                  >
+                    <Logo size={80} className="text-brand-rose" />
+                  </motion.div>
+                  <motion.p
+                    className="mt-6 text-center font-serif text-lg lowercase tracking-wide text-foreground/90"
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15, duration: 0.35 }}
+                  >
+                    Refining your signature... ✨
+                  </motion.p>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-      <div className="mt-auto rounded-2xl border border-border/40 bg-card/80 p-4 pb-safe shadow-lg backdrop-blur-md">
-        <div className="flex flex-wrap items-center gap-4">
-          {instructions.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Move</span>
-              <Select
-                value={String(selectedMoveIndex)}
-                onValueChange={(v) => setSelectedMoveIndex(Number(v))}
-              >
-                <SelectTrigger className="min-h-[44px] w-[180px] touch-manipulation rounded-xl border-border/40 bg-background/80">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {instructions.map((seg, i) => (
-                    <SelectItem key={i} value={String(i)}>
-                      {seg.pattern}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          {countDown !== null ? (
-            <motion.div
-              className="flex h-14 min-h-[44px] items-center justify-center rounded-xl bg-primary px-6 text-primary-foreground font-medium"
-              key="count"
-              initial={{ scale: 0.9 }}
-              animate={{ scale: 1 }}
-            >
-              {countDown}
-            </motion.div>
-          ) : recording ? (
-            <Button
-              size="lg"
-              className="min-h-[48px] min-w-[44px] touch-manipulation rounded-xl bg-destructive/90 hover:bg-destructive text-destructive-foreground"
-              onClick={handleStop}
-              disabled={saving}
-            >
-              <Square className="mr-2 h-5 w-5" />
-              Stop & Save
-            </Button>
-          ) : (
-            <motion.div
-              className="min-h-[48px] min-w-[44px]"
-              animate={{
-                boxShadow: [
-                  "0 0 0 0 hsl(var(--primary) / 0.4)",
-                  "0 0 0 12px hsl(var(--primary) / 0)",
-                ],
-              }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-                ease: "easeOut",
-              }}
-            >
-              <Button
-                size="lg"
-                className="min-h-[48px] min-w-[44px] touch-manipulation rounded-xl bg-primary px-6 hover:bg-primary/90 text-primary-foreground"
-                onClick={handleStart}
-              >
-                <Circle className="mr-2 h-5 w-5 fill-current" />
-                Start practice
-              </Button>
-            </motion.div>
-          )}
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Similarity: {Math.round(similarity * 100)}%
-        </p>
-      </div>
-
-      <AnimatePresence mode="wait">
-        {namePickerSessionId && (
-          <motion.div
-            key="name-picker"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 28,
-              mass: 0.8,
-            }}
-          >
+          <div className="grid gap-4 md:grid-cols-1">
             <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
               <CardHeader className="pb-2">
                 <CardTitle className="font-heading text-lg tracking-airy text-primary">
-                  Name your session
+                  {title}
                 </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Choose a boutique name or roll for new suggestions.
-                </p>
               </CardHeader>
-              <CardContent>
-                <SessionNamePicker
-                  names={suggestedNames}
-                  onSelect={handlePickSessionName}
-                  onRoll={handleRollSessionNames}
-                  rolling={nameRolling}
-                />
+              <CardContent className="p-0">
+                <div className="relative aspect-video w-full bg-black">
+                  <video
+                    ref={teacherVideoRef}
+                    src={videoUrl}
+                    className="h-full w-full object-contain"
+                    playsInline
+                    muted
+                    loop
+                    preload="metadata"
+                  />
+                </div>
               </CardContent>
             </Card>
-          </motion.div>
-        )}
-        {displaySessionName && (
-          <p className="text-center text-sm text-muted-foreground">
-            Session saved as{" "}
-            <span className="font-medium text-foreground">
-              &quot;{displaySessionName}&quot;
-            </span>
-          </p>
-        )}
-        {lastCoachingResult && !namePickerSessionId && (
-          <motion.div
-            key="coaching-card"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 28,
-              mass: 0.8,
-            }}
-          >
-            <CoachingCard
-              score={lastCoachingResult.score}
-              proTips={lastCoachingResult.proTips}
-              metrics={lastCoachingResult.metrics}
-              correctionTips={lastCoachingResult.correctionTips}
-              comparisonResult={lastCoachingResult.comparisonResult}
-              onRetry={() => setLastCoachingResult(null)}
-              onNext={() => router.push("/library")}
-              nextLabel="Back to library"
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+            <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
+              <CardHeader className="pb-2">
+                <CardTitle className="font-heading text-lg tracking-airy text-primary">
+                  Your camera
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="relative aspect-video w-full bg-black">
+                  <video
+                    ref={webcamVideoRef}
+                    className="absolute inset-0 h-full w-full object-contain mirror"
+                    playsInline
+                    muted
+                    style={{ transform: "scaleX(-1)" }}
+                  />
+                  <canvas
+                    ref={webcamCanvasRef}
+                    className="absolute inset-0 h-full w-full object-contain"
+                    width={640}
+                    height={480}
+                    style={{ transform: "scaleX(-1)" }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <motion.div
+                      className="rounded-full bg-primary/40 blur-xl border-2 border-primary/60"
+                      style={{
+                        width: 80 + similarity * 120,
+                        height: 80 + similarity * 120,
+                        boxShadow: `0 0 ${40 + similarity * 60}px hsl(var(--primary) / 0.6)`,
+                        willChange: "transform",
+                        transform: "translateZ(0)",
+                      }}
+                      animate={{
+                        scale: 0.8 + similarity * 0.4,
+                        opacity: 0.3 + similarity * 0.5,
+                      }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 200,
+                        damping: 20,
+                      }}
+                    />
+                  </div>
+                  <BloomSparkle show={showSparkle} />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="mt-auto rounded-2xl border border-border/40 bg-card/80 p-4 pb-safe shadow-lg backdrop-blur-md">
+            <div className="flex flex-wrap items-center gap-4">
+              {instructions.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Move</span>
+                  <Select
+                    value={String(selectedMoveIndex)}
+                    onValueChange={(v) => setSelectedMoveIndex(Number(v))}
+                  >
+                    <SelectTrigger className="min-h-[44px] w-[180px] touch-manipulation rounded-xl border-border/40 bg-background/80">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {instructions.map((seg, i) => (
+                        <SelectItem key={i} value={String(i)}>
+                          {seg.pattern}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {countDown !== null ? (
+                <motion.div
+                  className="flex h-14 min-h-[44px] items-center justify-center rounded-xl bg-primary px-6 text-primary-foreground font-medium"
+                  key="count"
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: 1 }}
+                >
+                  {countDown}
+                </motion.div>
+              ) : recording ? (
+                <Button
+                  size="lg"
+                  className="min-h-[48px] min-w-[44px] touch-manipulation rounded-xl bg-destructive/90 hover:bg-destructive text-destructive-foreground"
+                  onClick={handleStop}
+                  disabled={saving}
+                >
+                  <Square className="mr-2 h-5 w-5" />
+                  Stop & Save
+                </Button>
+              ) : (
+                <motion.div
+                  className="min-h-[48px] min-w-[44px]"
+                  animate={{
+                    boxShadow: [
+                      "0 0 0 0 hsl(var(--primary) / 0.4)",
+                      "0 0 0 12px hsl(var(--primary) / 0)",
+                    ],
+                  }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "easeOut",
+                  }}
+                >
+                  <Button
+                    size="lg"
+                    className="min-h-[48px] min-w-[44px] touch-manipulation rounded-xl bg-primary px-6 hover:bg-primary/90 text-primary-foreground"
+                    onClick={handleStart}
+                  >
+                    <Circle className="mr-2 h-5 w-5 fill-current" />
+                    Start practice
+                  </Button>
+                </motion.div>
+              )}
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Similarity: {Math.round(similarity * 100)}%
+            </p>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {namePickerSessionId && (
+              <motion.div
+                key="name-picker"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 28,
+                  mass: 0.8,
+                }}
+              >
+                <Card className="overflow-hidden border-border/40 rounded-2xl bg-card/80 shadow-lg backdrop-blur-md">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="font-heading text-lg tracking-airy text-primary">
+                      Name your session
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground">
+                      Choose a boutique name or roll for new suggestions.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <SessionNamePicker
+                      names={suggestedNames}
+                      onSelect={handlePickSessionName}
+                      onRoll={handleRollSessionNames}
+                      rolling={nameRolling}
+                    />
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+            {displaySessionName && (
+              <p className="text-center text-sm text-muted-foreground">
+                Session saved as{" "}
+                <span className="font-medium text-foreground">
+                  &quot;{displaySessionName}&quot;
+                </span>
+              </p>
+            )}
+            {lastCoachingResult && !namePickerSessionId && (
+              <motion.div
+                key="coaching-card"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{
+                  type: "spring",
+                  stiffness: 300,
+                  damping: 28,
+                  mass: 0.8,
+                }}
+              >
+                <CoachingCard
+                  score={lastCoachingResult.score}
+                  proTips={lastCoachingResult.proTips}
+                  metrics={lastCoachingResult.metrics}
+                  correctionTips={lastCoachingResult.correctionTips}
+                  comparisonResult={lastCoachingResult.comparisonResult}
+                  feedbackFailed={lastCoachingResult.feedbackFailed}
+                  onRetry={() => setLastCoachingResult(null)}
+                  onNext={() => router.push("/library")}
+                  nextLabel="Back to library"
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )}
     </div>
   );
 }

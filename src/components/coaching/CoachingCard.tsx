@@ -80,7 +80,35 @@ export interface CoachingCardProps {
   correctionTips?: TechnicalCorrectionTip[];
   /** Optional: real-time comparison result from analysis engine; drives boutique tips and accent. */
   comparisonResult?: ComparisonResult;
+  /** When true, AI feedback failed; show General Mastery fallback and encourage consistency. */
+  feedbackFailed?: boolean;
 }
+
+/** Sentinel Insight header label by worst joint group (dance-literate). */
+function getSentinelInsightLabel(group: ComparisonJointGroup): string {
+  switch (group) {
+    case "Hips":
+      return "Focus on Hip Timing";
+    case "Feet":
+      return "Focus on Footwork";
+    case "Frame":
+      return "Focus on Frame";
+    default:
+      return "Focus on Your Movement";
+  }
+}
+
+const cardVariants = {
+  analyzing: { opacity: 0.6, scale: 0.98 },
+  revealed: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.4,
+      ease: [0.25, 0.46, 0.45, 0.94] as const,
+    },
+  },
+};
 
 const bulletVariants = {
   hidden: { opacity: 0, y: 8 },
@@ -88,7 +116,7 @@ const bulletVariants = {
     opacity: 1,
     y: 0,
     transition: {
-      delay: i * 0.08,
+      delay: 0.15 + i * 0.08,
       duration: 0.35,
       ease: [0.25, 0.46, 0.45, 0.94] as const,
     },
@@ -104,13 +132,19 @@ export function CoachingCard({
   metrics,
   correctionTips = [],
   comparisonResult,
+  feedbackFailed = false,
 }: CoachingCardProps) {
   const [showTechnicalStats, setShowTechnicalStats] = useState(false);
   const displayScore = comparisonResult?.harmonyScore ?? score;
+  const worstGroup = comparisonResult?.worstJointGroup;
+  const sentinelLabel =
+    worstGroup != null ? getSentinelInsightLabel(worstGroup) : null;
   const displayProTips =
-    comparisonResult != null
-      ? getBoutiqueTipsForJointGroup(comparisonResult.worstJointGroup)
-      : proTips;
+    proTips.length > 0
+      ? proTips
+      : worstGroup != null
+        ? getBoutiqueTipsForJointGroup(worstGroup)
+        : proTips;
 
   const hasTechnicalStats =
     (metrics != null &&
@@ -141,161 +175,209 @@ export function CoachingCard({
         ? "text-amber-600 dark:text-amber-400"
         : "text-muted-foreground";
 
+  const showGeneralMastery = feedbackFailed;
+
   return (
-    <Card className={`rounded-2xl overflow-hidden shadow-lg ${accentTheme}`}>
-      <CardHeader className="pb-2">
-        <div className="flex items-center gap-2">
-          <Sparkles className={`h-5 w-5 shrink-0 ${iconAccent}`} />
-          <CardTitle className="font-serif text-xl text-foreground">
-            Your feedback
-          </CardTitle>
-        </div>
-        <p className="text-2xl font-bold tracking-tight mt-1">
-          <span className={scoreColor}>{displayScore}%</span>
-          <span className="text-muted-foreground text-base font-normal ml-2">
-            match
-          </span>
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {correctionTips.length > 0 && (
-          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-            <p className="mb-2 font-serif text-sm font-medium text-primary">
-              Dance-literate coaching
-            </p>
-            <ul className="space-y-2">
-              {correctionTips.map((t, i) => (
-                <motion.li
-                  key={i}
-                  className="flex gap-2 text-sm leading-relaxed text-foreground/95"
-                  variants={bulletVariants}
-                  initial="hidden"
-                  animate="visible"
-                  custom={i}
-                >
-                  <span className="shrink-0 font-medium text-primary">
-                    {i + 1}.
-                  </span>
-                  <span>{t.message}</span>
-                </motion.li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {displayProTips.length > 0 && (
-          <div>
-            <p className="mb-1.5 font-serif text-sm font-medium text-foreground/90">
-              Pro tips
-            </p>
-            <ul className="space-y-2">
-              {displayProTips.map((tip, i) => (
-                <motion.li
-                  key={i}
-                  className="flex gap-2 text-sm leading-relaxed text-foreground/90"
-                  variants={bulletVariants}
-                  initial="hidden"
-                  animate="visible"
-                  custom={i}
-                >
-                  <span className={`shrink-0 font-medium ${iconAccent}`}>
-                    {i + 1}.
-                  </span>
-                  <span>{tip}</span>
-                </motion.li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {hasTechnicalStats && (
-          <div className="rounded-xl border border-border/60 bg-muted/30 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setShowTechnicalStats((s) => !s)}
-              className="flex min-h-[44px] w-full touch-manipulation items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50"
-            >
-              <span>Technical stats</span>
-              {showTechnicalStats ? (
-                <ChevronUp className="h-4 w-4 shrink-0" />
+    <motion.div initial="analyzing" animate="revealed" variants={cardVariants}>
+      <Card className={`rounded-2xl overflow-hidden shadow-lg ${accentTheme}`}>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className={`h-5 w-5 shrink-0 ${iconAccent}`} />
+            <CardTitle className="font-serif text-xl text-foreground">
+              {sentinelLabel != null ? (
+                <>Sentinel Insight: {sentinelLabel}</>
+              ) : showGeneralMastery ? (
+                "General Mastery"
               ) : (
-                <ChevronDown className="h-4 w-4 shrink-0" />
+                "Your feedback"
               )}
-            </button>
-            {showTechnicalStats && (
-              <div className="border-t border-border/60 px-4 py-3 space-y-3 text-sm">
-                {metrics != null && (
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-muted-foreground">
-                    {metrics.tensionAvg !== undefined && (
-                      <span>
-                        Tension: {(metrics.tensionAvg * 100).toFixed(0)}%
-                      </span>
-                    )}
-                    {metrics.isolationAvg !== undefined && (
-                      <span>
-                        Isolation: {(metrics.isolationAvg * 100).toFixed(0)}%
-                      </span>
-                    )}
-                    {metrics.placementAvg !== undefined && (
-                      <span>
-                        Placement: {(metrics.placementAvg * 100).toFixed(0)}%
-                      </span>
-                    )}
-                    {metrics.alignedPairs !== undefined && (
-                      <span>Aligned pairs: {metrics.alignedPairs}</span>
-                    )}
-                  </div>
+            </CardTitle>
+          </div>
+          <p className="text-2xl font-bold tracking-tight mt-1">
+            <span className={scoreColor}>{Math.round(displayScore)}%</span>
+            <span className="text-muted-foreground text-base font-normal ml-2">
+              match
+            </span>
+          </p>
+          <div
+            className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-brand-champagne/80"
+            role="progressbar"
+            aria-valuenow={Math.round(displayScore)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <motion.div
+              className="h-full rounded-full bg-gradient-to-r from-brand-champagne to-brand-rose"
+              initial={{ width: 0 }}
+              animate={{
+                width: `${Math.min(100, Math.max(0, displayScore))}%`,
+              }}
+              transition={{
+                duration: 0.6,
+                delay: 0.2,
+                ease: [0.25, 0.46, 0.45, 0.94],
+              }}
+            />
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {showGeneralMastery && (
+            <motion.div
+              className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1, duration: 0.3 }}
+            >
+              <p className="font-serif text-sm font-medium text-foreground/90">
+                Keep consistency—your movement is being refined.
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Detailed tips will appear here when analysis is available. Try
+                another practice when ready.
+              </p>
+            </motion.div>
+          )}
+          {correctionTips.length > 0 && !showGeneralMastery && (
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <p className="mb-2 font-serif text-sm font-medium text-primary">
+                Dance-literate coaching
+              </p>
+              <ul className="space-y-2">
+                {correctionTips.map((t, i) => (
+                  <motion.li
+                    key={i}
+                    className="flex gap-2 text-sm leading-relaxed text-foreground/95"
+                    variants={bulletVariants}
+                    initial="hidden"
+                    animate="visible"
+                    custom={i}
+                  >
+                    <span className="shrink-0 font-medium text-primary">
+                      {i + 1}.
+                    </span>
+                    <span>{t.message}</span>
+                  </motion.li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {displayProTips.length > 0 && !showGeneralMastery && (
+            <div>
+              <p className="mb-1.5 font-serif text-sm font-medium text-foreground/90">
+                Pro tips
+              </p>
+              <ul className="space-y-2">
+                {displayProTips.map((tip, i) => (
+                  <motion.li
+                    key={i}
+                    className="flex gap-2 text-sm leading-relaxed text-foreground/90"
+                    variants={bulletVariants}
+                    initial="hidden"
+                    animate="visible"
+                    custom={i}
+                  >
+                    <span className={`shrink-0 font-medium ${iconAccent}`}>
+                      {i + 1}.
+                    </span>
+                    <span>{tip}</span>
+                  </motion.li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {hasTechnicalStats && (
+            <div className="rounded-xl border border-border/60 bg-muted/30 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowTechnicalStats((s) => !s)}
+                className="flex min-h-[44px] w-full touch-manipulation items-center justify-between px-4 py-2.5 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50"
+              >
+                <span>Technical stats</span>
+                {showTechnicalStats ? (
+                  <ChevronUp className="h-4 w-4 shrink-0" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 shrink-0" />
                 )}
-                {correctionTips.length > 0 && (
-                  <div>
-                    <p className="font-medium text-foreground/90 mb-1.5">
-                      Correction tips
-                    </p>
-                    <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
-                      {correctionTips.map((t, i) => (
-                        <li key={i}>
-                          {t.message}
-                          {t.severity != null && (
-                            <span className="ml-1 text-xs">({t.severity})</span>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+              </button>
+              {showTechnicalStats && (
+                <div className="border-t border-border/60 px-4 py-3 space-y-3 text-sm">
+                  {metrics != null && (
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-muted-foreground">
+                      {metrics.tensionAvg !== undefined && (
+                        <span>
+                          Tension: {(metrics.tensionAvg * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {metrics.isolationAvg !== undefined && (
+                        <span>
+                          Isolation: {(metrics.isolationAvg * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {metrics.placementAvg !== undefined && (
+                        <span>
+                          Placement: {(metrics.placementAvg * 100).toFixed(0)}%
+                        </span>
+                      )}
+                      {metrics.alignedPairs !== undefined && (
+                        <span>Aligned pairs: {metrics.alignedPairs}</span>
+                      )}
+                    </div>
+                  )}
+                  {correctionTips.length > 0 && (
+                    <div>
+                      <p className="font-medium text-foreground/90 mb-1.5">
+                        Correction tips
+                      </p>
+                      <ul className="list-disc list-inside space-y-0.5 text-muted-foreground">
+                        {correctionTips.map((t, i) => (
+                          <li key={i}>
+                            {t.message}
+                            {t.severity != null && (
+                              <span className="ml-1 text-xs">
+                                ({t.severity})
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3 pt-2">
+            {onRetry && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={onRetry}
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Try again
+              </Button>
+            )}
+            {onNext && (
+              <Button
+                size="sm"
+                className={
+                  displayScore >= 80
+                    ? "rounded-full bg-[hsl(346,77%,50%)] text-white hover:opacity-90"
+                    : "rounded-full bg-primary hover:bg-primary/90"
+                }
+                onClick={onNext}
+              >
+                {nextLabel}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             )}
           </div>
-        )}
-
-        <div className="flex flex-wrap gap-3 pt-2">
-          {onRetry && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full"
-              onClick={onRetry}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              Try again
-            </Button>
-          )}
-          {onNext && (
-            <Button
-              size="sm"
-              className={
-                displayScore >= 80
-                  ? "rounded-full bg-[hsl(346,77%,50%)] text-white hover:opacity-90"
-                  : "rounded-full bg-primary hover:bg-primary/90"
-              }
-              onClick={onNext}
-            >
-              {nextLabel}
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 }

@@ -13,14 +13,14 @@ import { Check, X, ChevronRight, ChevronLeft } from "lucide-react";
 import type { SuggestedLabel } from "@/types/dance";
 import type { SuggestedSegment } from "@/engines/segmentation";
 
-/** Unified AI suggestion for Admin Verification (Scanner or Magic Wand). */
+/** Unified AI suggestion for Admin Verification (Scanner, Magic Wand, or SalsaAgent MAL). */
 export interface AI_PROPOSAL {
   id: string;
-  source: "scanner" | "magic_wand";
+  source: "scanner" | "magic_wand" | "SalsaAgent_v1";
   startTime: number;
   endTime: number;
   label: string;
-  /** 0–1; from similarity (scanner) or confidence (magic_wand). */
+  /** 0–1; from similarity (scanner) or confidence (magic_wand / SalsaAgent). */
   confidence: number;
   /** Scanner only: move_id for approve/reject. */
   move_id?: string;
@@ -35,7 +35,10 @@ function formatTime(s: number): string {
 }
 
 /** Normalize SuggestedLabel (Scanner) to AI_PROPOSAL. */
-export function suggestedLabelToProposal(s: SuggestedLabel, index: number): AI_PROPOSAL {
+export function suggestedLabelToProposal(
+  s: SuggestedLabel,
+  index: number
+): AI_PROPOSAL {
   return {
     id: `scanner-${s.move_id}-${s.startTime}-${s.endTime}-${index}`,
     source: "scanner",
@@ -49,7 +52,10 @@ export function suggestedLabelToProposal(s: SuggestedLabel, index: number): AI_P
 }
 
 /** Normalize SuggestedSegment (Magic Wand) to AI_PROPOSAL. */
-export function suggestedSegmentToProposal(s: SuggestedSegment, index: number): AI_PROPOSAL {
+export function suggestedSegmentToProposal(
+  s: SuggestedSegment,
+  index: number
+): AI_PROPOSAL {
   return {
     id: `magic_wand-${s.start}-${s.end}-${index}`,
     source: "magic_wand",
@@ -121,7 +127,8 @@ export function AdminVerificationTinder({
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
-          No AI suggestions to verify. Run &quot;Run auto label&quot; or &quot;Magic Wand&quot; first.
+          No AI suggestions to verify. Run &quot;Run auto label&quot; or
+          &quot;Magic Wand&quot; first.
         </CardContent>
       </Card>
     );
@@ -162,9 +169,13 @@ export function AdminVerificationTinder({
                 }`}
               >
                 {(current.confidence * 100).toFixed(0)}%
-                {current.confidence >= highConfidenceThreshold ? " high confidence" : ""}
+                {current.confidence >= highConfidenceThreshold
+                  ? " high confidence"
+                  : ""}
               </span>
-              <span className="text-xs text-muted-foreground capitalize">{current.source.replace("_", " ")}</span>
+              <span className="text-xs text-muted-foreground capitalize">
+                {current.source.replace("_", " ")}
+              </span>
             </div>
           </div>
         )}
@@ -207,7 +218,9 @@ export function AdminVerificationTinder({
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setCurrentIndex((i) => Math.min(proposals.length - 1, i + 1))}
+            onClick={() =>
+              setCurrentIndex((i) => Math.min(proposals.length - 1, i + 1))
+            }
             disabled={disabled || !hasNext}
             aria-label="Next suggestion"
           >

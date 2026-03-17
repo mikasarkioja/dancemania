@@ -46,6 +46,12 @@ export interface RecentSession {
   sessionName: string;
 }
 
+/** Free practice usage for session counter (null = admin/teacher bypass, hide counter). */
+export interface PracticeEntitlement {
+  currentCount: number;
+  remaining: number;
+}
+
 export interface DashboardViewProps {
   userName: string;
   bloomProgress: number;
@@ -55,6 +61,8 @@ export interface DashboardViewProps {
   moveOfTheDay: MoveOfTheDay | null;
   /** Show the Test User Welcome Kit overlay (first authenticated session, non-admin). */
   shouldShowWelcomeKit?: boolean;
+  /** Free practices used/remaining; null = unlimited (admin/teacher), don't show counter. */
+  practiceEntitlement?: PracticeEntitlement | null;
 }
 
 const container = {
@@ -70,6 +78,8 @@ const item = {
   show: { opacity: 1, y: 0 },
 };
 
+const FREE_PRACTICE_LIMIT = 3;
+
 export function DashboardView({
   userName,
   bloomProgress,
@@ -78,6 +88,7 @@ export function DashboardView({
   recentSessions = [],
   moveOfTheDay,
   shouldShowWelcomeKit = false,
+  practiceEntitlement = null,
 }: DashboardViewProps) {
   return (
     <main className="min-h-svh bg-brand-champagne/50 pt-safe pb-safe">
@@ -89,6 +100,38 @@ export function DashboardView({
           animate="show"
           className="space-y-6"
         >
+          {/* Session counter: X of 3 Free Practices Remaining */}
+          {practiceEntitlement != null && (
+            <motion.section variants={item}>
+              <div className="rounded-2xl border border-white/50 bg-white/60 p-3 shadow-sm backdrop-blur-md">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {practiceEntitlement.remaining === 0
+                    ? "Free practices used"
+                    : "Free practices remaining"}
+                </p>
+                <p className="mt-0.5 font-serif text-sm font-medium text-foreground">
+                  {practiceEntitlement.remaining === 0
+                    ? `${Math.min(practiceEntitlement.currentCount, FREE_PRACTICE_LIMIT)} of ${FREE_PRACTICE_LIMIT} used`
+                    : `${practiceEntitlement.remaining} of ${FREE_PRACTICE_LIMIT} remaining`}
+                </p>
+                <div
+                  className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-brand-champagne/80"
+                  role="progressbar"
+                  aria-valuenow={practiceEntitlement.remaining}
+                  aria-valuemin={0}
+                  aria-valuemax={FREE_PRACTICE_LIMIT}
+                >
+                  <div
+                    className="h-full rounded-full bg-brand-gold/90 transition-all duration-300"
+                    style={{
+                      width: `${(practiceEntitlement.remaining / FREE_PRACTICE_LIMIT) * 100}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </motion.section>
+          )}
+
           {/* Header + Activity Ring */}
           <motion.header
             variants={item}

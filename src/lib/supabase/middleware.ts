@@ -3,8 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 
 /**
  * Refresh Supabase session on every request to prevent Auth Desync
- * (users logged out unexpectedly). getSession() refreshes the token
- * when needed and updates cookies via setAll.
+ * (users logged out unexpectedly). We call getUser() so the JWT is
+ * validated and refreshed when needed; setAll() writes updated cookies
+ * onto the response so the client stays in sync.
  */
 export async function updateSession(request: NextRequest) {
   try {
@@ -30,12 +31,7 @@ export async function updateSession(request: NextRequest) {
       },
     });
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session?.user) {
-      await supabase.auth.getUser();
-    }
+    await supabase.auth.getUser();
     return supabaseResponse;
   } catch {
     return NextResponse.next({ request });
