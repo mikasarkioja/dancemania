@@ -4,6 +4,21 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Admin video supply chain workflow (2025-03-17)
+
+- **`docs/ACADEMY_ADMIN_VIDEO_WORKFLOW.md`:** Operator playbook from upload → extraction → label → review → **published** (student Library/Practice). Lists env (`EXTRACTION_SERVICE_URL`, service role), statuses, and code pointers.
+- **`/admin`:** “Supply chain: video → students” stepper (upload, extraction, label, review/publish) + note that only `published` rows are student-visible.
+- **`/admin/label`:** Fetches `status`; shows color badges (pending extraction, needs labeling, relabeling, published), per-row next-step hints, and explicit **Label** / **Review / Publish** actions.
+
+### Admin pipeline UI & tracking (2025-03-17)
+
+- **`src/lib/admin/video-pipeline-state.ts`:** Derives 4 steps (upload, extraction, labeling, publish) with `done` / `current` / `blocked` / `needsRevisit` for `needs_relabeling`.
+- **Components:** `AdminVideoPipelineSteps` (full + compact), `RetryExtractionButton` (POST process-dance-video), `AdminVideoQueueRow`, `AdminSupplyChainStats` (queue counts on `/admin`).
+- **Wiring:** `/admin/label` rows show **x/4** + compact stepper + retry when extraction pending; `/admin/label/[id]` + `/admin/review/[id]` show full stepper + contextual CTAs; **AdminUpload** success card with stepper + deep links.
+- **`/admin/dictionary`:** Clarified as **optional** relative to the main publish pipeline.
+
+---
+
 ## Sentinel, 3-Free Gate, MAL & Coaching (2025-03-17)
 
 ### MVP gap & revenue gating

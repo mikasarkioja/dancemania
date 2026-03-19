@@ -16,6 +16,12 @@ import {
   LabelVerificationStack,
   LabelVerificationStackMAL,
 } from "@/features/admin";
+import { AdminVideoPipelineSteps } from "@/features/admin/components/AdminVideoPipelineSteps";
+import { RetryExtractionButton } from "@/features/admin/components/RetryExtractionButton";
+import {
+  pipelineProgressSummary,
+  type PipelineStepDerived,
+} from "@/lib/admin/video-pipeline-state";
 import {
   runAutoLabel,
   approveSuggestedLabel,
@@ -34,6 +40,8 @@ export interface VideoLabelerWrapperProps {
   isAuthenticated?: boolean;
   bpm?: number | null;
   genre?: string | null;
+  libraryStatus?: string | null;
+  pipelineSteps: PipelineStepDerived[];
 }
 
 export function VideoLabelerWrapper({
@@ -47,6 +55,8 @@ export function VideoLabelerWrapper({
   isAuthenticated = false,
   bpm = null,
   genre = null,
+  libraryStatus = null,
+  pipelineSteps,
 }: VideoLabelerWrapperProps) {
   const router = useRouter();
   const [mockProposals, setMockProposals] = useState<SalsaAgentMetadata[]>([]);
@@ -114,8 +124,31 @@ export function VideoLabelerWrapper({
     []
   );
 
+  const summary = pipelineProgressSummary(pipelineSteps, libraryStatus);
+  const showRetry =
+    libraryStatus === "pending_analysis" &&
+    !(motionDna?.frames && motionDna.frames.length > 0);
+  const publishStep = pipelineSteps.find((s) => s.id === "publish");
+  const showReviewCta = publishStep?.visual === "current";
+
   return (
     <div className="space-y-6">
+      <section className="space-y-3 rounded-2xl border border-border bg-card/80 p-4 shadow-sm">
+        <AdminVideoPipelineSteps steps={pipelineSteps} variant="full" />
+        <p className="text-sm text-muted-foreground">{summary}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          {showRetry && <RetryExtractionButton videoId={videoId} />}
+          {showReviewCta && (
+            <Link
+              href={`/admin/review/${videoId}`}
+              className="inline-flex min-h-[40px] items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Open Review / Publish →
+            </Link>
+          )}
+        </div>
+      </section>
+
       {/* MAL: mock SalsaAgent proposals for testing Tinder without live Python service */}
       <section className="rounded-2xl border border-dashed border-[rgba(253,164,175,0.4)] bg-white/40 p-4 dark:bg-white/5">
         <h3 className="mb-3 font-serif text-lg font-semibold text-foreground">

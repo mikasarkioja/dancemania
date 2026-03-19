@@ -4,6 +4,9 @@ import { DashboardView } from "@/features/dashboard/components/DashboardView";
 import { getAppGenre } from "@/lib/genre-server";
 import { getWelcomeKitStatus } from "@/features/user/actions/welcome-kit-actions";
 import { checkPracticeEntitlement } from "@/features/practice/actions/usage-actions";
+import { getPersonaFromXp } from "@/lib/dashboard/persona";
+import { buildMotionDnaRadarData } from "@/lib/dashboard/motion-dna";
+import type { ComparisonJointGroup } from "@/features/practice/actions/session-actions";
 
 const BLOOM_GOAL_SESSIONS_PER_WEEK = 5;
 
@@ -24,6 +27,15 @@ export default async function StudentDashboardPage() {
     user.email?.split("@")[0] ??
     "dancer";
 
+  // Sentinel fetch: Omatase (XP) and Persona — scoped to authenticated user
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("omatase")
+    .eq("id", user.id)
+    .single();
+  const omatase = profile?.omatase ?? 0;
+  const persona = getPersonaFromXp(omatase);
+
   const now = new Date();
   const weekStart = new Date(now);
   weekStart.setDate(now.getDate() - now.getDay());
@@ -32,6 +44,17 @@ export default async function StudentDashboardPage() {
   sevenDaysAgo.setDate(now.getDate() - 7);
   sevenDaysAgo.setHours(0, 0, 0, 0);
 
+  // Last 5 sessions with metrics (for Motion DNA and Recent Activity with Sentinel Insight)
+  const { data: recentSessionsWithMetrics } = await supabase
+    .from("practice_sessions")
+    .select("id, video_id, created_at, score_total, session_name, metrics")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const sessionsWithMetrics = recentSessionsWithMetrics ?? [];
+
+  // Weekly sessions for chart and bloom progress (same as before)
   const { data: sessions } = await supabase
     .from("practice_sessions")
     .select("id, video_id, created_at, score_total, session_name")
@@ -51,6 +74,46 @@ export default async function StudentDashboardPage() {
         ? `Session ${new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
         : "Practice session"),
   }));
+
+  // Recent activity with Sentinel Insight (worst joint group) and link to session coaching
+  const recentActivityWithInsight = sessionsWithMetrics.map((s) => {
+    const metrics = (s.metrics as Record<string, unknown>) ?? {};
+    const worstJointGroup = metrics.worstJointGroup as
+      | ComparisonJointGroup
+      | undefined
+      | null;
+    const harmonyScore =
+      (metrics.harmonyScore as number | undefined) ??
+      Number(s.score_total ?? 0);
+    return {
+      id: s.id,
+      videoId: s.video_id,
+      createdAt: s.created_at,
+      scoreTotal: s.score_total ?? 0,
+      sessionName:
+        s.session_name ??
+        (s.created_at
+          ? `Session ${new Date(s.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+          : "Practice session"),
+      worstJointGroup: worstJointGroup ?? null,
+      harmonyScore,
+    };
+  });
+
+  // Motion DNA: average scores by axis from recent session metrics
+  const motionDnaRadarData = buildMotionDnaRadarData(
+    sessionsWithMetrics.map((s) => {
+      const m = (s.metrics as Record<string, unknown>) ?? {};
+      return {
+        harmonyScore: (m.harmonyScore as number) ?? Number(s.score_total ?? 0),
+        worstJointGroup: m.worstJointGroup as
+          | ComparisonJointGroup
+          | undefined
+          | null,
+        timingOffsetMs: m.timingOffsetMs as number | undefined | null,
+      };
+    })
+  );
 
   const chartData = (() => {
     const byDay: Record<string, { total: number; count: number }> = {};
@@ -145,6 +208,10 @@ export default async function StudentDashboardPage() {
       chartData={chartData}
       continueLearningVideos={continueLearningVideos}
       recentSessions={recentSessions}
+      recentActivityWithInsight={recentActivityWithInsight}
+      omatase={omatase}
+      persona={persona}
+      motionDnaRadarData={motionDnaRadarData}
       practiceEntitlement={
         entitlement.isBypass
           ? null

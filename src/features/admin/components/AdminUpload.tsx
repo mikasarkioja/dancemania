@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { compressVideoForUpload } from "@/lib/utils/video-processor";
 import type {
@@ -23,6 +24,11 @@ import {
 } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { PartnerIdentificationStep } from "./PartnerIdentificationStep";
+import { AdminVideoPipelineSteps } from "./AdminVideoPipelineSteps";
+import {
+  computeVideoPipelineSteps,
+  pipelineProgressSummary,
+} from "@/lib/admin/video-pipeline-state";
 
 const GENRES: { value: DanceGenre; label: string }[] = [
   { value: "salsa", label: "Salsa" },
@@ -67,6 +73,9 @@ export function AdminUpload() {
   const [compressProgress, setCompressProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [lastUploadedVideoId, setLastUploadedVideoId] = useState<string | null>(
+    null
+  );
 
   // Keep form genre in sync with master switch (Salsa/Bachata in header)
   useEffect(() => {
@@ -184,8 +193,8 @@ export function AdminUpload() {
       }
 
       setSuccess(true);
-
       if (insertRow?.id) {
+        setLastUploadedVideoId(insertRow.id);
         fetch("/api/process-dance-video", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -212,8 +221,47 @@ export function AdminUpload() {
     trackingSeeds &&
     !loading;
 
+  const uploadDoneSteps =
+    lastUploadedVideoId != null
+      ? computeVideoPipelineSteps({
+          status: "pending_analysis",
+          hasMotionDna: false,
+          instructionSegmentCount: 0,
+        })
+      : null;
+
   return (
     <div className="mx-auto max-w-md space-y-8">
+      {success && lastUploadedVideoId && uploadDoneSteps && (
+        <div
+          className="space-y-3 rounded-2xl border border-emerald-500/40 bg-emerald-500/5 p-4"
+          role="status"
+        >
+          <p className="font-medium text-foreground">Upload complete</p>
+          <p className="text-sm text-muted-foreground">
+            {pipelineProgressSummary(uploadDoneSteps, "pending_analysis")}
+          </p>
+          <AdminVideoPipelineSteps
+            steps={uploadDoneSteps}
+            variant="compact"
+            className="justify-start"
+          />
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            <Link
+              href={`/admin/label/${lastUploadedVideoId}`}
+              className="inline-flex min-h-[40px] items-center justify-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Open this video in Label →
+            </Link>
+            <Link
+              href="/admin/label"
+              className="inline-flex min-h-[40px] items-center justify-center rounded-lg border border-border px-4 text-sm font-medium hover:bg-accent"
+            >
+              Full label queue
+            </Link>
+          </div>
+        </div>
+      )}
       {/* Step 1: Metadata + video select */}
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-2">
@@ -357,13 +405,6 @@ export function AdminUpload() {
             {error}
           </p>
         )}
-        {success && (
-          <p className="text-sm text-green-600" role="status">
-            Video uploaded and added to dance library. Processing will run
-            automatically.
-          </p>
-        )}
-
         <Button type="submit" disabled={!canSubmit} className="w-full">
           {loading ? (
             <>

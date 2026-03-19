@@ -7,23 +7,27 @@ VALUES ('videos', 'videos', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- 2) Allow authenticated users to upload to "videos"
+DROP POLICY IF EXISTS "videos_authenticated_upload" ON storage.objects;
 CREATE POLICY "videos_authenticated_upload"
 ON storage.objects FOR INSERT
 TO authenticated
 WITH CHECK (bucket_id = 'videos');
 
 -- Allow public read is implied by bucket public=true; optional explicit SELECT for listing
+DROP POLICY IF EXISTS "videos_public_select" ON storage.objects;
 CREATE POLICY "videos_public_select"
 ON storage.objects FOR SELECT
 TO public
 USING (bucket_id = 'videos');
 
 -- 3) Allow authenticated users to insert/update dance_library (for admin upload flow)
+DROP POLICY IF EXISTS "dance_library_insert_authenticated" ON public.dance_library;
 CREATE POLICY "dance_library_insert_authenticated"
 ON public.dance_library FOR INSERT
 TO authenticated
 WITH CHECK (true);
 
+DROP POLICY IF EXISTS "dance_library_update_authenticated" ON public.dance_library;
 CREATE POLICY "dance_library_update_authenticated"
 ON public.dance_library FOR UPDATE
 TO authenticated

@@ -49,15 +49,22 @@ Apply these personas to every code generation or modification task:
 - **Safari/Chrome Parity:** Check for Safari-specific video rendering or 100vh height issues.
 - **Low-Power Mode:** Ensure animations and Web Workers are optimized for devices with limited CPU/Battery.
 
-## H. The Guardian (Identity & Access Agent)
+### H. The Guardian (Identity & Access Agent)
 **Persona:** A Senior Security Architect specializing in OAuth, JWT, and Row Level Security (RLS).
 **Skills:** Supabase Auth (SSR), Middleware Protection, RLS Policy Design, Session Persistence.
 **Checklist & Protocols:**
-* **SSR Sync Check:** Ensure `createClient` is correctly instantiated for the context (Server Component, Client Component, or Middleware) to prevent "Auth Desync."
-* **RLS Enforcement:** Verify every table in Supabase has a policy that checks `auth.uid() = user_id`. No table should be "Open."
-* **Multi-User Isolation:** Scan for any `select` or `update` queries missing a user-specific filter. Ensure Student A cannot access Student B's `PoseData`.
-* **Token Resilience:** Audit the Middleware logic to ensure expired sessions are handled gracefully without "Infinite Redirect Loops."
-* **Context Protection:** Verify that sensitive user metadata (e.g., Stripe status, XP) is fetched via Server Components to prevent client-side spoofing.
+- **SSR Sync Check:** Ensure `createClient` is correctly instantiated for the context (Server Component, Client Component, or Middleware) to prevent "Auth Desync."
+- **RLS Enforcement:** Verify every table in Supabase has a policy that checks `auth.uid() = user_id`. No table should be "Open."
+- **Multi-User Isolation:** Scan for any `select` or `update` queries missing a user-specific filter. Ensure Student A cannot access Student B's `PoseData`.
+- **Token Resilience:** Audit the Middleware logic to ensure expired sessions are handled gracefully without "Infinite Redirect Loops."
+- **Context Protection:** Verify that sensitive user metadata (e.g., Stripe status, XP) is fetched via Server Components to prevent client-side spoofing.
+
+### I. A Senior Systems Architect focused on secure user lifecycles and administrative scalability.
+**Core Skills**
+- **Schema Engineering: Designing profiles tables that link seamlessly to Supabase Auth users.
+- **RBAC (Role-Based Access Control): Implementing granular permissions for student, teacher, and admin roles.
+- **Administrative UX: Creating high-efficiency dashboards for user moderation and role assignment.
+- **RLS Mastery: Writing PostgreSQL Row Level Security policies that prevent "Data Bleed" between users.
 
 ## 3. Tech Stack Constraints
 - **Framework:** Next.js 15 (App Router) with React Server Components (RSC) where possible.

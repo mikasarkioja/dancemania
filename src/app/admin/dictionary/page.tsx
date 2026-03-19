@@ -37,6 +37,14 @@ export default async function AdminDictionaryPage() {
         View ideal move 3D playback and hip-tilt / foot-velocity over an 8-count
         measure.
       </p>
+      <p className="mb-2 text-sm text-muted-foreground">
+        <strong className="text-foreground">Optional step:</strong> This lab is
+        not required to publish videos for students. Follow the main pipeline on{" "}
+        <Link href="/admin/label" className="text-primary underline">
+          Label videos
+        </Link>{" "}
+        (Upload → Extract → Label → Review).
+      </p>
       <p className="mb-6 text-sm text-muted-foreground">
         Only videos with <strong>motion_dna</strong> appear here. Populate pose
         data (e.g. run your pose extraction pipeline or script that writes{" "}

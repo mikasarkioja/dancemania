@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Settings } from "lucide-react";
+import { Settings, Sparkles, Flower2, ChevronRight } from "lucide-react";
 import {
   AreaChart,
   Area,
@@ -12,8 +12,11 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { Sparkles, Flower2 } from "lucide-react";
 import { WelcomeKit } from "@/features/onboarding/components/WelcomeKit";
+import { BloomGarden } from "@/features/dashboard/components/BloomGarden";
+import { MotionDNAChart } from "@/features/dashboard/components/MotionDNAChart";
+import type { MotionDnaRadarPoint } from "@/lib/dashboard/motion-dna";
+import type { ComparisonJointGroup } from "@/features/practice/actions/session-actions";
 
 export interface ChartPoint {
   date: string;
@@ -52,12 +55,28 @@ export interface PracticeEntitlement {
   remaining: number;
 }
 
+/** Recent session with Sentinel Insight (worst joint group) for coaching link. */
+export interface RecentActivityWithInsight {
+  id: string;
+  videoId: string;
+  createdAt: string;
+  scoreTotal: number;
+  sessionName: string;
+  worstJointGroup: ComparisonJointGroup | null;
+  harmonyScore: number;
+}
+
 export interface DashboardViewProps {
   userName: string;
   bloomProgress: number;
   chartData: ChartPoint[];
   continueLearningVideos: ContinueVideo[];
   recentSessions?: RecentSession[];
+  /** Last few sessions with worstJointGroup for Sentinel Insight and link to session coaching. */
+  recentActivityWithInsight?: RecentActivityWithInsight[];
+  omatase?: number;
+  persona?: string;
+  motionDnaRadarData?: MotionDnaRadarPoint[];
   moveOfTheDay: MoveOfTheDay | null;
   /** Show the Test User Welcome Kit overlay (first authenticated session, non-admin). */
   shouldShowWelcomeKit?: boolean;
@@ -80,18 +99,39 @@ const item = {
 
 const FREE_PRACTICE_LIMIT = 3;
 
+function sentinelInsightLabel(worst: ComparisonJointGroup | null): string {
+  if (!worst) return "General focus";
+  switch (worst) {
+    case "Hips":
+      return "Hip timing";
+    case "Feet":
+      return "Footwork";
+    case "Frame":
+      return "Frame";
+    default:
+      return "Movement";
+  }
+}
+
 export function DashboardView({
   userName,
   bloomProgress,
   chartData,
   continueLearningVideos,
   recentSessions = [],
+  recentActivityWithInsight = [],
+  omatase = 0,
+  persona = "Seedling",
+  motionDnaRadarData = [],
   moveOfTheDay,
   shouldShowWelcomeKit = false,
   practiceEntitlement = null,
 }: DashboardViewProps) {
+  const showEmptyState =
+    omatase === 0 && recentActivityWithInsight.length === 0;
+
   return (
-    <main className="min-h-svh bg-brand-champagne/50 pt-safe pb-safe">
+    <main className="dark min-h-svh bg-[#1a1a1c] pt-safe pb-safe">
       {shouldShowWelcomeKit && <WelcomeKit />}
       <div className="container mx-auto max-w-2xl px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pt-8">
         <motion.div
@@ -100,10 +140,31 @@ export function DashboardView({
           animate="show"
           className="space-y-6"
         >
+          {/* Empty state: 0 XP — First Step CTA to Assessment */}
+          {showEmptyState && (
+            <motion.section variants={item}>
+              <div className="rounded-2xl border border-white/10 bg-[rgba(40,40,42,0.85)] p-6 text-center shadow-xl backdrop-blur-xl">
+                <p className="font-serif text-lg font-bold text-foreground">
+                  Your garden awaits
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Take your first step—complete the Assessment to unlock your
+                  Omatase and grow your Bloom Garden.
+                </p>
+                <Link
+                  href="/onboarding"
+                  className="mt-4 inline-flex min-h-[44px] touch-manipulation items-center justify-center rounded-full bg-[#FDA4AF] px-6 py-2.5 text-sm font-medium text-white shadow-lg transition hover:opacity-90 tap-scale"
+                >
+                  First Step — Start Assessment
+                </Link>
+              </div>
+            </motion.section>
+          )}
+
           {/* Session counter: X of 3 Free Practices Remaining */}
           {practiceEntitlement != null && (
             <motion.section variants={item}>
-              <div className="rounded-2xl border border-white/50 bg-white/60 p-3 shadow-sm backdrop-blur-md">
+              <div className="rounded-2xl border border-white/10 bg-[rgba(40,40,42,0.8)] p-3 shadow-sm backdrop-blur-xl">
                 <p className="text-xs font-medium text-muted-foreground">
                   {practiceEntitlement.remaining === 0
                     ? "Free practices used"
@@ -145,7 +206,7 @@ export function DashboardView({
             <div className="flex items-center gap-2">
               <Link
                 href="/settings"
-                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/50 bg-white/60 text-foreground shadow-sm backdrop-blur-md transition hover:bg-white/80"
+                className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/20 bg-[rgba(40,40,42,0.8)] text-foreground shadow-sm backdrop-blur-xl transition hover:bg-[rgba(50,50,52,0.9)]"
                 aria-label="Settings"
               >
                 <Settings className="h-5 w-5" />
@@ -154,10 +215,42 @@ export function DashboardView({
             </div>
           </motion.header>
 
+          {/* Bloom Garden — central glassmorphic card */}
+          <motion.section variants={item}>
+            <BloomGarden omatase={omatase} persona={persona} />
+          </motion.section>
+
+          {/* Motion DNA Radar */}
+          <motion.section variants={item}>
+            <div className="rounded-2xl border border-white/10 bg-[rgba(30,30,32,0.75)] p-4 shadow-xl backdrop-blur-xl sm:p-5">
+              <h2 className="font-serif text-lg font-bold text-foreground">
+                Motion DNA
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Your movement profile across key dimensions
+              </p>
+              <div className="mt-4">
+                <MotionDNAChart
+                  data={
+                    motionDnaRadarData.length > 0
+                      ? motionDnaRadarData
+                      : [
+                          { axis: "Hips", value: 50, fullMark: 100 },
+                          { axis: "Feet", value: 50, fullMark: 100 },
+                          { axis: "Posture", value: 50, fullMark: 100 },
+                          { axis: "Timing", value: 50, fullMark: 100 },
+                          { axis: "Flow", value: 50, fullMark: 100 },
+                        ]
+                  }
+                />
+              </div>
+            </div>
+          </motion.section>
+
           {/* Move of the Day - thumb-friendly, first after header */}
           {moveOfTheDay && (
             <motion.section variants={item}>
-              <div className="rounded-2xl border border-white/50 bg-white/60 p-5 shadow-sm backdrop-blur-md">
+              <div className="rounded-2xl border border-white/10 bg-[rgba(40,40,42,0.8)] p-5 shadow-sm backdrop-blur-xl">
                 <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
                   Move of the day
                 </p>
@@ -179,7 +272,7 @@ export function DashboardView({
 
           {/* Weekly Bloom chart */}
           <motion.section variants={item}>
-            <div className="rounded-2xl border border-white/50 bg-white/60 p-4 shadow-sm backdrop-blur-md sm:p-5">
+            <div className="rounded-2xl border border-white/10 bg-[rgba(40,40,42,0.8)] p-4 shadow-sm backdrop-blur-xl sm:p-5">
               <h2 className="font-serif text-lg font-bold text-foreground">
                 Your week
               </h2>
@@ -253,31 +346,61 @@ export function DashboardView({
             </div>
           </motion.section>
 
-          {/* Recent sessions (Creative Director names) */}
-          {recentSessions.length > 0 && (
+          {/* Recent activity — Sentinel Insight + link to session CoachingCard */}
+          {(recentActivityWithInsight.length > 0 ||
+            recentSessions.length > 0) && (
             <motion.section variants={item}>
               <h2 className="font-serif text-lg font-bold text-foreground">
-                Recent sessions
+                Recent activity
               </h2>
               <p className="text-sm text-muted-foreground">
-                Your practice recordings
+                Your practice sessions and Sentinel Insight
               </p>
               <ul className="mt-3 space-y-2">
-                {recentSessions.map((session) => (
-                  <li key={session.id}>
-                    <Link
-                      href={`/practice/${session.videoId}`}
-                      className="flex min-h-[44px] touch-manipulation items-center justify-between rounded-xl border border-white/50 bg-white/60 px-4 py-3 shadow-sm backdrop-blur-md transition-shadow hover:shadow-md tap-scale"
-                    >
-                      <span className="font-medium text-foreground">
-                        {session.sessionName}
-                      </span>
-                      <span className="text-sm text-muted-foreground">
-                        {session.scoreTotal}%
-                      </span>
-                    </Link>
-                  </li>
-                ))}
+                {recentActivityWithInsight.length > 0
+                  ? recentActivityWithInsight.map((session) => (
+                      <li key={session.id}>
+                        <Link
+                          href={`/session/${session.id}`}
+                          className="flex min-h-[44px] touch-manipulation items-center gap-3 rounded-xl border border-white/10 bg-[rgba(40,40,42,0.8)] px-4 py-3 shadow-sm backdrop-blur-xl transition-shadow hover:shadow-md tap-scale"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="block font-medium text-foreground">
+                              {session.sessionName}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-[#FDA4AF]/90">
+                              Sentinel:{" "}
+                              {sentinelInsightLabel(session.worstJointGroup)}
+                            </span>
+                          </div>
+                          <span className="shrink-0 text-sm font-medium text-muted-foreground">
+                            {session.scoreTotal}%
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {new Date(session.createdAt).toLocaleDateString(
+                              "en-US",
+                              { month: "short", day: "numeric" }
+                            )}
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        </Link>
+                      </li>
+                    ))
+                  : recentSessions.map((session) => (
+                      <li key={session.id}>
+                        <Link
+                          href={`/practice/${session.videoId}`}
+                          className="flex min-h-[44px] touch-manipulation items-center justify-between rounded-xl border border-white/10 bg-[rgba(40,40,42,0.8)] px-4 py-3 shadow-sm backdrop-blur-xl transition-shadow hover:shadow-md tap-scale"
+                        >
+                          <span className="font-medium text-foreground">
+                            {session.sessionName}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            {session.scoreTotal}%
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
               </ul>
             </motion.section>
           )}
@@ -298,7 +421,7 @@ export function DashboardView({
                     href={`/practice/${video.id}`}
                     className="group flex min-h-[44px] min-w-[44px] shrink-0 touch-manipulation tap-scale"
                   >
-                    <div className="w-[160px] overflow-hidden rounded-2xl border border-white/50 bg-white/60 shadow-sm backdrop-blur-md transition-shadow group-hover:shadow-md">
+                    <div className="w-[160px] overflow-hidden rounded-2xl border border-white/10 bg-[rgba(40,40,42,0.8)] shadow-sm backdrop-blur-xl transition-shadow group-hover:shadow-md">
                       <div className="relative aspect-video bg-muted">
                         <div
                           className="absolute inset-0 bg-cover bg-center blur-md"
@@ -326,7 +449,7 @@ export function DashboardView({
                 ))}
               </div>
             ) : (
-              <div className="mt-3 rounded-2xl border border-white/50 bg-white/60 p-6 text-center backdrop-blur-md">
+              <div className="mt-3 rounded-2xl border border-white/10 bg-[rgba(40,40,42,0.8)] p-6 text-center backdrop-blur-xl">
                 <Sparkles className="mx-auto h-10 w-10 text-muted-foreground/50" />
                 <p className="mt-2 text-sm text-muted-foreground">
                   No sessions yet. Start from the library.
