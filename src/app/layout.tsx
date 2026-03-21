@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@/app/globals.css";
 import { AppShell } from "@/components/AppShell";
-import { Toaster } from "sonner";
+import { BoutiqueToaster } from "@/components/BoutiqueToaster";
 
 export const metadata: Metadata = {
   title: "DanceAI",
@@ -25,7 +25,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="min-h-svh bg-background text-foreground antialiased">
         <AppShell>{children}</AppShell>
-        <Toaster richColors position="top-center" />
+        <BoutiqueToaster />
       </body>
     </html>
   );

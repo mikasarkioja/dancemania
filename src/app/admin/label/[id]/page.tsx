@@ -6,6 +6,8 @@ import { mergePatternsWithRegistry } from "@/lib/patterns";
 import { getAppGenre } from "@/lib/genre-server";
 import { computeVideoPipelineSteps } from "@/lib/admin/video-pipeline-state";
 import type { DanceInstructions, MotionDNA } from "@/types/dance";
+import { getServerRole } from "@/lib/supabase/roles";
+import { resolveDanceLibraryPlaybackUrl } from "@/lib/dance-library/resolve-playback-url";
 
 function hasMotionDnaPayload(raw: unknown): boolean {
   if (raw == null || typeof raw !== "object") return false;
@@ -31,7 +33,7 @@ export default async function AdminLabelVideoPage({
     supabase
       .from("dance_library")
       .select(
-        "id, slug, title, video_url, instructions, motion_dna, suggested_labels, bpm, genre, status"
+        "id, slug, title, video_url, source_bucket, storage_object_path, instructions, motion_dna, suggested_labels, bpm, genre, status, creator_id"
       )
       .eq("id", id)
       .single(),
@@ -45,6 +47,26 @@ export default async function AdminLabelVideoPage({
 
   if (error || !row) notFound();
   const isAuthenticated = !!user;
+
+  const playbackUrl = await resolveDanceLibraryPlaybackUrl(supabase, {
+    video_url: row.video_url,
+    source_bucket: row.source_bucket as string | null,
+    storage_object_path: row.storage_object_path as string | null,
+  });
+
+  if (!playbackUrl) {
+    return (
+      <main className="container max-w-6xl py-8">
+        <p className="mb-4 text-destructive">
+          Could not resolve a playable URL for this video. Check storage path
+          and bucket policies.
+        </p>
+        <Link href="/admin/label" className="text-sm text-primary underline">
+          ← Back to list
+        </Link>
+      </main>
+    );
+  }
 
   const instructions = Array.isArray(row.instructions)
     ? (row.instructions as DanceInstructions)
@@ -62,6 +84,13 @@ export default async function AdminLabelVideoPage({
     instructionSegmentCount: instructions.length,
   });
 
+  const role = await getServerRole();
+  const showSubmitGold =
+    user?.id === row.creator_id &&
+    role === "teacher" &&
+    (row.status === "needs_labeling" || row.status === "needs_relabeling") &&
+    instructions.length > 0;
+
   return (
     <main className="container max-w-6xl py-8">
       <p className="mb-4">
@@ -71,7 +100,7 @@ export default async function AdminLabelVideoPage({
       </p>
       <VideoLabelerWrapper
         videoId={row.id}
-        videoUrl={row.video_url}
+        videoUrl={playbackUrl}
         title={row.title}
         initialInstructions={instructions}
         motionDna={row.motion_dna ?? null}
@@ -82,6 +111,7 @@ export default async function AdminLabelVideoPage({
         genre={row.genre ?? null}
         libraryStatus={row.status}
         pipelineSteps={pipelineSteps}
+        submitForGoldStandard={showSubmitGold}
       />
     </main>
   );

@@ -50,6 +50,8 @@ import {
 import { PrivacyConsentModal } from "@/features/user/components/PrivacyConsentModal";
 import { checkPracticeEntitlement } from "../actions/usage-actions";
 import { EliteAccessModal } from "./EliteAccessModal";
+import { logVideoActivity } from "@/features/analytics/actions/video-usage-actions";
+import { useVideoViewLog } from "@/features/analytics/components/VideoViewLogger";
 
 const FPS = 30;
 const TEACHER_GHOST_COLOR = "rgba(196, 181, 253, 0.5)";
@@ -162,6 +164,8 @@ export function PracticeCapture({
   const teacherVideoRef = useRef<HTMLVideoElement>(null);
   const webcamVideoRef = useRef<HTMLVideoElement>(null);
   const webcamCanvasRef = useRef<HTMLCanvasElement>(null);
+  const practiceStartLoggedRef = useRef(false);
+  const { onPlaying: logTeacherView } = useVideoViewLog(videoId);
   const [teacherTime, setTeacherTime] = useState(0);
   const [recording, setRecording] = useState(false);
   const [countDown, setCountDown] = useState<number | null>(null);
@@ -389,6 +393,7 @@ export function PracticeCapture({
   }, [showSparkle]);
 
   const handleStart = useCallback(() => {
+    practiceStartLoggedRef.current = false;
     setCountDown(COUNT_IN_SEC);
     setStudentFrames([]);
     setCurrentStudentFrame(null);
@@ -399,11 +404,15 @@ export function PracticeCapture({
     if (countDown <= 0) {
       setCountDown(null);
       setRecording(true);
+      if (!practiceStartLoggedRef.current) {
+        practiceStartLoggedRef.current = true;
+        void logVideoActivity(videoId, "practice_start");
+      }
       return;
     }
     const t = setTimeout(() => setCountDown(countDown - 1), 1000);
     return () => clearTimeout(t);
-  }, [countDown]);
+  }, [countDown, videoId]);
 
   const handleStop = useCallback(() => {
     setRecording(false);
@@ -486,6 +495,7 @@ export function PracticeCapture({
             .select("id")
             .single();
           if (!insertError && sessionRow?.id) {
+            void logVideoActivity(videoId, "practice_complete");
             const aiFeedback = await generateAndSaveCoachingFeedback(
               sessionRow.id,
               {
@@ -695,6 +705,7 @@ export function PracticeCapture({
                     muted
                     loop
                     preload="metadata"
+                    onPlaying={logTeacherView}
                   />
                 </div>
               </CardContent>

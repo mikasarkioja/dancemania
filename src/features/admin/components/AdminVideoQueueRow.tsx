@@ -28,7 +28,8 @@ export function AdminVideoQueueRow({
 }: AdminVideoQueueRowProps) {
   const completed = countCompletedSteps(steps);
   const summary = pipelineProgressSummary(steps, status);
-  const showRetry = status === "pending_analysis" && !hasMotionDna;
+  const showRetry =
+    (status === "pending_analysis" || status === "processing") && !hasMotionDna;
 
   return (
     <li className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition-colors hover:bg-muted/40">
@@ -41,6 +42,11 @@ export function AdminVideoQueueRow({
             >
               {title}
             </Link>
+            {status === "pending_admin_approval" ? (
+              <span className="rounded-full border border-[#FDA4AF]/40 bg-[#FDA4AF]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#FDA4AF]">
+                Gold review
+              </span>
+            ) : null}
             <span className="text-xs text-muted-foreground">
               {completed}/4 steps
             </span>

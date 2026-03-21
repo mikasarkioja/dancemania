@@ -6,6 +6,7 @@ import { Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { useAppGenre } from "@/contexts/GenreContext";
 import { cn } from "@/lib/utils";
+import { NotificationBell } from "@/features/notifications/components/NotificationBell";
 
 const navLinks = [
   { href: "/dashboard", label: "Dashboard" },
@@ -13,6 +14,7 @@ const navLinks = [
   { href: "/library", label: "Library" },
   { href: "/encyclopedia", label: "Encyclopedia" },
   { href: "/practice", label: "Practice" },
+  { href: "/teacher", label: "Teacher" },
   { href: "/admin", label: "Admin" },
 ] as const;
 
@@ -70,16 +72,20 @@ export function SiteHeader() {
               {label}
             </Link>
           ))}
+          <NotificationBell className="ml-1" />
         </nav>
 
-        <button
-          type="button"
-          aria-label="Open menu"
-          className="md:hidden flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground touch-manipulation"
-          onClick={() => setMobileOpen(true)}
-        >
-          <Menu className="h-6 w-6" />
-        </button>
+        <div className="flex items-center gap-1 md:hidden">
+          <NotificationBell />
+          <button
+            type="button"
+            aria-label="Open menu"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground touch-manipulation"
+            onClick={() => setMobileOpen(true)}
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+        </div>
       </div>
 
       {mobileOpen && (

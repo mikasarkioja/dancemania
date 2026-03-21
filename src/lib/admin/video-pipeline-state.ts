@@ -43,7 +43,8 @@ export function computeVideoPipelineSteps(
     input.hasMotionDna ||
     status === "needs_labeling" ||
     status === "needs_relabeling" ||
-    status === "published";
+    status === "published" ||
+    status === "pending_admin_approval";
 
   const labelingDone = input.instructionSegmentCount > 0;
 
@@ -54,7 +55,10 @@ export function computeVideoPipelineSteps(
   let publishVisual: StepVisualState = "upcoming";
 
   if (!extractionDone) {
-    extractionVisual = status === "pending_analysis" ? "current" : "blocked";
+    extractionVisual =
+      status === "pending_analysis" || status === "processing"
+        ? "current"
+        : "blocked";
     labelingVisual = "blocked";
     publishVisual = "blocked";
   } else if (status === "needs_relabeling") {
@@ -126,6 +130,9 @@ export function pipelineProgressSummary(
   const s = statusNorm(status);
   if (s === "published") {
     return "All steps complete — video is published for students.";
+  }
+  if (s === "pending_admin_approval") {
+    return "Submitted for gold-standard review — a master admin will verify and publish.";
   }
 
   const current = steps.find(

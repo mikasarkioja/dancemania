@@ -1,8 +1,8 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { isServerAdmin } from "@/lib/supabase/roles";
-import { AdminUsersTable } from "@/features/admin/components/AdminUsersTable";
+import { AdminUserDirectory } from "@/features/admin/components/AdminUserDirectory";
+import { fetchAdminDashboardData } from "@/features/admin/data/admin-dashboard";
 
 export default async function AdminUsersPage() {
   const ok = await isServerAdmin();
@@ -10,52 +10,30 @@ export default async function AdminUsersPage() {
     redirect("/dashboard");
   }
 
-  const supabase = await createClient();
-
-  const { data: profiles } = await supabase
-    .from("profiles")
-    .select("id, full_name, email, role, updated_at")
-    .order("updated_at", { ascending: false });
-
-  const userIds = (profiles ?? []).map((p) => p.id);
-  const sessionCounts: Record<string, number> = {};
-
-  if (userIds.length > 0) {
-    const { data: sessions } = await supabase
-      .from("practice_sessions")
-      .select("user_id");
-    (sessions ?? []).forEach((s) => {
-      sessionCounts[s.user_id] = (sessionCounts[s.user_id] ?? 0) + 1;
-    });
-  }
-
-  const users = (profiles ?? []).map((p) => ({
-    id: p.id,
-    full_name: p.full_name ?? null,
-    email: p.email ?? null,
-    role: (p.role as "student" | "teacher" | "admin") ?? "student",
-    practice_count: sessionCounts[p.id] ?? 0,
-  }));
+  const { directoryUsers } = await fetchAdminDashboardData();
 
   return (
-    <main className="container mx-auto max-w-4xl px-4 py-8">
-      <div className="flex items-center gap-4 mb-8">
-        <Link
-          href="/admin"
-          className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-border bg-background text-foreground hover:bg-accent"
-        >
-          ←
-        </Link>
-        <div>
-          <h1 className="font-serif text-2xl font-bold text-foreground">
-            User management
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            View and manage roles. Only admins can access this page.
-          </p>
+    <div className="min-h-[calc(100svh-4rem)] bg-[#1a1a1c] text-white">
+      <main className="container mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        <div className="mb-8 flex items-center gap-4">
+          <Link
+            href="/admin"
+            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full border border-white/15 bg-white/5 text-white hover:bg-white/10"
+          >
+            ←
+          </Link>
+          <div>
+            <h1 className="font-serif text-2xl font-bold text-white">
+              User management
+            </h1>
+            <p className="text-sm text-white/55">
+              Same directory as the studio overview. Only admins can access this
+              page.
+            </p>
+          </div>
         </div>
-      </div>
-      <AdminUsersTable users={users} />
-    </main>
+        <AdminUserDirectory users={directoryUsers} />
+      </main>
+    </div>
   );
 }

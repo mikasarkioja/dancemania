@@ -4,6 +4,11 @@ import Link from "next/link";
 
 const STATUSES = [
   {
+    key: "processing",
+    label: "Processing",
+    hint: "Teacher studio extraction",
+  },
+  {
     key: "pending_analysis",
     label: "Pending extraction",
     hint: "Waiting for pose pipeline",
@@ -17,6 +22,11 @@ const STATUSES = [
     key: "needs_relabeling",
     label: "Needs relabeling",
     hint: "After review rejection",
+  },
+  {
+    key: "pending_admin_approval",
+    label: "Gold review",
+    hint: "Teacher submitted",
   },
   {
     key: "published",
@@ -56,7 +66,7 @@ export async function AdminSupplyChainStats() {
           Open label queue →
         </Link>
       </div>
-      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         {counts.map((c) => (
           <li
             key={c.key}

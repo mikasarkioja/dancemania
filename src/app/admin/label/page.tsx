@@ -22,6 +22,33 @@ export default async function AdminLabelPage() {
     .eq("genre", appGenre)
     .order("created_at", { ascending: false });
 
+  const list = rows ?? [];
+  const goldQueue = list.filter((r) => r.status === "pending_admin_approval");
+  const rest = list.filter((r) => r.status !== "pending_admin_approval");
+
+  function rowToQueueEl(row: (typeof list)[0]) {
+    const instructions = Array.isArray(row.instructions)
+      ? (row.instructions as DanceInstructions)
+      : [];
+    const hasDna = hasMotionDnaPayload(row.motion_dna);
+    const steps = computeVideoPipelineSteps({
+      status: row.status,
+      hasMotionDna: hasDna,
+      instructionSegmentCount: instructions.length,
+    });
+    return (
+      <AdminVideoQueueRow
+        key={row.id}
+        videoId={row.id}
+        title={row.display_name?.trim() || row.title}
+        slug={row.slug}
+        status={row.status}
+        hasMotionDna={hasDna}
+        steps={steps}
+      />
+    );
+  }
+
   return (
     <main className="container max-w-3xl py-8">
       <h1 className="mb-2 text-2xl font-semibold">Label videos</h1>
@@ -35,41 +62,37 @@ export default async function AdminLabelPage() {
       <p className="mb-6 text-sm text-muted-foreground">
         <span className="font-medium text-foreground">Students</span> only see{" "}
         <code className="rounded bg-muted px-1 text-xs">published</code> videos.{" "}
-        Operator playbook:{" "}
+        Teacher submissions in{" "}
+        <code className="rounded bg-muted px-1 text-xs">
+          pending_admin_approval
+        </code>{" "}
+        appear in the gold-standard queue first. Operator playbook:{" "}
         <code className="rounded bg-muted px-1">
           docs/ACADEMY_ADMIN_VIDEO_WORKFLOW.md
         </code>
       </p>
-      {rows && rows.length > 0 ? (
-        <ul className="space-y-3">
-          {rows.map((row) => {
-            const instructions = Array.isArray(row.instructions)
-              ? (row.instructions as DanceInstructions)
-              : [];
-            const hasDna = hasMotionDnaPayload(row.motion_dna);
-            const steps = computeVideoPipelineSteps({
-              status: row.status,
-              hasMotionDna: hasDna,
-              instructionSegmentCount: instructions.length,
-            });
-            return (
-              <AdminVideoQueueRow
-                key={row.id}
-                videoId={row.id}
-                title={row.display_name?.trim() || row.title}
-                slug={row.slug}
-                status={row.status}
-                hasMotionDna={hasDna}
-                steps={steps}
-              />
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="text-muted-foreground">
-          No videos in the library yet. Upload one from the Admin page first.
-        </p>
+
+      {goldQueue.length > 0 && (
+        <section className="mb-8" aria-labelledby="gold-queue-heading">
+          <h2
+            id="gold-queue-heading"
+            className="mb-3 font-serif text-lg font-semibold text-[#FDA4AF]"
+          >
+            Gold-standard review (teacher submissions)
+          </h2>
+          <ul className="space-y-3">{goldQueue.map(rowToQueueEl)}</ul>
+        </section>
       )}
+
+      {rest.length > 0 ? (
+        <ul className="space-y-3">{rest.map(rowToQueueEl)}</ul>
+      ) : goldQueue.length === 0 ? (
+        <p className="text-muted-foreground">
+          No videos in the library yet. Upload one from the Admin or Teacher
+          Studio page first.
+        </p>
+      ) : null}
+
       <p className="mt-6">
         <Link href="/admin" className="text-sm text-primary underline">
           ← Back to Admin

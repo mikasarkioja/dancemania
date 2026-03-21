@@ -70,6 +70,15 @@ export async function promoteProposalToRegistry(
     proposal.label_suggestions[0]?.move_name?.trim() ?? "Unnamed move";
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to promote a proposal.",
+    };
+  }
 
   const { data: row, error: fetchError } = await supabase
     .from("dance_library")
@@ -120,6 +129,7 @@ export async function promoteProposalToRegistry(
     role: "Both",
     biomechanical_profile,
     status: "approved",
+    creator_id: user.id,
   };
   if (genre) insertPayload.genre = genre;
 

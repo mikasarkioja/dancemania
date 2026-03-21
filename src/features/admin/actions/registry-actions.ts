@@ -103,6 +103,15 @@ export async function saveMoveToRegistry(
   } = params;
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to save to the registry.",
+    };
+  }
 
   const { data: row, error: fetchError } = await supabase
     .from("dance_library")
@@ -205,6 +214,16 @@ export async function saveMoveToRegistryFromProfile(
   }
 
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      success: false,
+      error: "You must be signed in to save to the registry.",
+    };
+  }
+
   const insertPayload: Record<string, unknown> = {
     name: name.trim(),
     category: category.trim() || "General",
@@ -212,6 +231,7 @@ export async function saveMoveToRegistryFromProfile(
     description: description?.trim() || null,
     biomechanical_profile: profile,
     status: "approved",
+    creator_id: user.id,
   };
   if (genre) {
     insertPayload.genre = genre;

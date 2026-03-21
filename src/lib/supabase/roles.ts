@@ -41,3 +41,15 @@ export async function isServerAdmin(): Promise<boolean> {
   } = await supabase.auth.getUser();
   return ((user?.app_metadata?.role as string) ?? "") === "admin";
 }
+
+/** True if profiles.role or JWT indicates teacher or admin. */
+export async function isServerTeacherOrAdmin(): Promise<boolean> {
+  const role = await getServerRole();
+  if (role === "teacher" || role === "admin") return true;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const jwtRole = (user?.app_metadata?.role as string) ?? "";
+  return jwtRole === "admin" || jwtRole === "teacher";
+}

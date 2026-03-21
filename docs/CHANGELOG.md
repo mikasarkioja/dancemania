@@ -4,6 +4,41 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Admin Master Console & operator data (2025-03-17)
+
+- **`/admin` (overview only):** Server-side admin gate (`redirect` if not admin). **Studio Pulse** stat bar (dancers, teachers, practices, avg precision), **Sentinel** cookie diagnostic widget, **Teacher performance** + **top practiced videos**, **user directory** (search, pagination, role edit, Bloom badge, join date from `created_at`), boutique sidebar + charcoal shell on the overview page only (sub-routes keep default theme).
+- **Data:** `fetchAdminDashboardData()` in `src/features/admin/data/admin-dashboard.ts` — aggregates `profiles`, `practice_sessions`, `dance_library`, `video_usage_logs` (views).
+- **Migration** `20250321000021_profiles_created_at.sql`: `profiles.created_at` for join date display.
+- **Extraction refactor:** `src/lib/extraction/run-process-dance-video.ts` shared by `POST /api/process-dance-video` (RLS row check + role); private `teacher-uploads` / signed URLs supported.
+- **`/admin/users`:** Reuses directory data + dark shell; **resolve-playback-url** for label/review when library rows use storage path only.
+
+## Notifications ledger & Realtime bell (2025-03-17)
+
+- **Migration** `20250323000023_notifications.sql`: enum `notification_type` (`content_approval`, `move_verified`, `xp_milestone`, `system_alert`), table `notifications` (title, message, optional link, `is_read`, `created_at`), RLS SELECT/UPDATE own rows only; triggers — **Bloom** on `profiles` omatase (students only, tier 100/500), **move_verified** when `dance_library` becomes `published`.
+- **Server:** `createNotification` + `insertNotification` / `insertNotificationForAllAdmins` (`src/lib/notifications/`, `src/features/notifications/actions/notification-actions.ts`).
+- **Automation:** Admins notified on teacher `pending_admin_approval` (`submitTeacherVideoForApproval`); teachers on extraction complete (`runProcessDanceVideoForRow`, `system_alert`); publish + Bloom via DB triggers.
+- **UI:** `NotificationBell` in `SiteHeader` — Supabase Realtime INSERT/UPDATE, latest 5, mark-all-read, Framer rose-gold pulse; **BoutiqueToaster** (Sonner) with glass + rose-gold borders.
+- **Realtime:** Add `notifications` to Supabase Replication (or `ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;`).
+
+## Teacher Studio upload & gold-standard handoff (2025-03-17)
+
+- **Route:** `/teacher/upload` — `TeacherStudioUploadForm` + `TeacherRecentUploads` (Realtime on `dance_library` for `creator_id`; enable Replication in Supabase Dashboard if needed).
+- **Migration** `20250322000022_teacher_studio_pipeline.sql`: statuses `processing`, `pending_admin_approval`; `description`, `source_bucket`, `storage_object_path`; nullable `video_url` with storage check; private `teacher-uploads` bucket + RLS (folder = `auth.uid()`, admin read-all).
+- **Actions:** `processTeacherUpload`, `submitTeacherVideoForApproval`; extraction via `runProcessDanceVideoForRow` (signed URLs for private objects).
+- **Admin:** Label queue **Gold-standard review** section; `submitForGoldStandard` on label UI for teachers; `AdminSupplyChainStats` extended.
+
+## Creator ownership, teacher RLS, video usage analytics (2025-03-17)
+
+- **Migration** `20250320000020_creator_ownership_video_usage_rls.sql`: `dance_library.creator_id` and `move_registry.creator_id` (FK → `profiles.id`); backfill from `uploaded_by` then first admin profile; enum `video_usage_action` + table `video_usage_logs` with RLS (insert own user; select own activity, logs for videos you created, or admin).
+- **dance_library RLS**: Students/guests **SELECT** only `status = 'published'`; creators and admins see drafts; **INSERT/UPDATE/DELETE** scoped to `creator_id = auth.uid()` with teacher/admin role (JWT `app_metadata` fallback for admin).
+- **move_registry / video_moves**: Creator-isolated writes; **SELECT** approved moves for everyone (encyclopedia), pending for owner/admin.
+- **Server action** `logVideoActivity` in `src/features/analytics/actions/video-usage-actions.ts`; **hooks** `useVideoViewLog` for `view` on first `playing`.
+- **PracticePlayer** + **PracticeCapture**: log `view` on teacher video play; `practice_start` after countdown; `practice_complete` after session saved.
+- **Teacher dashboard** `/teacher` (`src/app/(dashboard)/teacher/`): videos you own (or all if admin), views / starts / completion % from `video_usage_logs`. Header nav link **Teacher**.
+- **AdminUpload**, **registry-actions**, **mal-actions**: set `creator_id` on insert.
+
+---
+
 ## Admin video supply chain workflow (2025-03-17)
 
 - **`docs/ACADEMY_ADMIN_VIDEO_WORKFLOW.md`:** Operator playbook from upload → extraction → label → review → **published** (student Library/Practice). Lists env (`EXTRACTION_SERVICE_URL`, service role), statuses, and code pointers.

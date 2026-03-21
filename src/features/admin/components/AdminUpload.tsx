@@ -181,7 +181,7 @@ export function AdminUpload() {
           motion_dna: null,
           tracking_seeds: trackingSeeds,
           status: "pending_analysis",
-          ...(user?.id ? { uploaded_by: user.id } : {}),
+          ...(user?.id ? { uploaded_by: user.id, creator_id: user.id } : {}),
         })
         .select("id")
         .single();

@@ -27,6 +27,10 @@ import {
   approveSuggestedLabel,
   rejectSuggestedLabel,
 } from "@/features/admin/actions/label-actions";
+import { submitTeacherVideoForApproval } from "@/features/teacher/actions/teacher-upload-actions";
+import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export interface VideoLabelerWrapperProps {
   videoId: string;
@@ -42,6 +46,8 @@ export interface VideoLabelerWrapperProps {
   genre?: string | null;
   libraryStatus?: string | null;
   pipelineSteps: PipelineStepDerived[];
+  /** Teacher-owned video: show CTA to hand off to master admin after segments exist. */
+  submitForGoldStandard?: boolean;
 }
 
 export function VideoLabelerWrapper({
@@ -57,9 +63,11 @@ export function VideoLabelerWrapper({
   genre = null,
   libraryStatus = null,
   pipelineSteps,
+  submitForGoldStandard = false,
 }: VideoLabelerWrapperProps) {
   const router = useRouter();
   const [mockProposals, setMockProposals] = useState<SalsaAgentMetadata[]>([]);
+  const [submittingGold, setSubmittingGold] = useState(false);
 
   const handleSave = useCallback(
     async (
@@ -126,18 +134,56 @@ export function VideoLabelerWrapper({
 
   const summary = pipelineProgressSummary(pipelineSteps, libraryStatus);
   const showRetry =
-    libraryStatus === "pending_analysis" &&
+    (libraryStatus === "pending_analysis" || libraryStatus === "processing") &&
     !(motionDna?.frames && motionDna.frames.length > 0);
   const publishStep = pipelineSteps.find((s) => s.id === "publish");
-  const showReviewCta = publishStep?.visual === "current";
+  const isPendingGold = libraryStatus === "pending_admin_approval";
+  const showReviewCta = publishStep?.visual === "current" && !isPendingGold;
+
+  const handleSubmitGold = useCallback(async () => {
+    setSubmittingGold(true);
+    const result = await submitTeacherVideoForApproval(videoId);
+    setSubmittingGold(false);
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Submitted for master admin approval.");
+    router.refresh();
+  }, [videoId, router]);
 
   return (
     <div className="space-y-6">
+      {isPendingGold && (
+        <div className="rounded-2xl border border-[#FDA4AF]/35 bg-[#FDA4AF]/10 px-4 py-3 text-sm text-foreground">
+          <strong>Gold-standard queue.</strong> A master admin will verify
+          labels and publish when ready. You can still view this page, but
+          editing may be limited until review completes.
+        </div>
+      )}
       <section className="space-y-3 rounded-2xl border border-border bg-card/80 p-4 shadow-sm">
         <AdminVideoPipelineSteps steps={pipelineSteps} variant="full" />
         <p className="text-sm text-muted-foreground">{summary}</p>
         <div className="flex flex-wrap items-center gap-3">
           {showRetry && <RetryExtractionButton videoId={videoId} />}
+          {submitForGoldStandard && !isPendingGold && (
+            <Button
+              type="button"
+              variant="secondary"
+              className="min-h-[40px] border-[#FDA4AF]/40 bg-[#FDA4AF]/10 text-foreground hover:bg-[#FDA4AF]/20"
+              disabled={submittingGold || !isAuthenticated}
+              onClick={() => void handleSubmitGold()}
+            >
+              {submittingGold ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Submitting…
+                </>
+              ) : (
+                "Submit for master admin approval"
+              )}
+            </Button>
+          )}
           {showReviewCta && (
             <Link
               href={`/admin/review/${videoId}`}

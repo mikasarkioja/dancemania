@@ -9,6 +9,7 @@ import {
   pipelineProgressSummary,
 } from "@/lib/admin/video-pipeline-state";
 import type { DanceInstructions, MotionDNA } from "@/types/dance";
+import { resolveDanceLibraryPlaybackUrl } from "@/lib/dance-library/resolve-playback-url";
 
 function hasMotionDnaPayload(raw: unknown): boolean {
   if (raw == null || typeof raw !== "object") return false;
@@ -26,12 +27,31 @@ export default async function AdminReviewVideoPage({
   const { data: row, error } = await supabase
     .from("dance_library")
     .select(
-      "id, slug, title, video_url, instructions, motion_dna, status, verified_at, rejection_reason"
+      "id, slug, title, video_url, source_bucket, storage_object_path, instructions, motion_dna, status, verified_at, rejection_reason"
     )
     .eq("id", id)
     .single();
 
   if (error || !row) notFound();
+
+  const playbackUrl = await resolveDanceLibraryPlaybackUrl(supabase, {
+    video_url: row.video_url,
+    source_bucket: row.source_bucket as string | null,
+    storage_object_path: row.storage_object_path as string | null,
+  });
+
+  if (!playbackUrl) {
+    return (
+      <main className="container max-w-6xl py-8">
+        <p className="mb-4 text-destructive">
+          Could not resolve a playable URL for this video.
+        </p>
+        <Link href="/admin/label" className="text-sm text-primary underline">
+          ← Back to label list
+        </Link>
+      </main>
+    );
+  }
 
   const instructions = Array.isArray(row.instructions)
     ? (row.instructions as DanceInstructions)
@@ -67,7 +87,7 @@ export default async function AdminReviewVideoPage({
       </section>
       <VideoReviewerWrapper
         videoId={row.id}
-        videoUrl={row.video_url}
+        videoUrl={playbackUrl}
         title={row.title}
         motionDna={row.motion_dna ?? null}
         instructions={instructions}

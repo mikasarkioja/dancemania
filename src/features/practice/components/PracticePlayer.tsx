@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { DanceInstructions } from "@/types/dance";
 import { InstructionsOverlay } from "@/components/InstructionsOverlay";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useVideoViewLog } from "@/features/analytics";
 
 export interface PracticePlayerProps {
   videoId: string;
@@ -13,12 +14,14 @@ export interface PracticePlayerProps {
 }
 
 export function PracticePlayer({
+  videoId,
   title,
   videoUrl,
   instructions,
 }: PracticePlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const { onPlaying: logView } = useVideoViewLog(videoId);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -45,6 +48,7 @@ export function PracticePlayer({
             playsInline
             muted
             preload="metadata"
+            onPlaying={logView}
           />
           <InstructionsOverlay
             instructions={instructions}
