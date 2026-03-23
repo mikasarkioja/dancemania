@@ -43,29 +43,8 @@ CREATE POLICY "video_usage_logs_insert_own"
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
--- Select: own rows, or teacher viewing logs for owned videos, or admin
-DROP POLICY IF EXISTS "video_usage_logs_select_insights" ON public.video_usage_logs;
-CREATE POLICY "video_usage_logs_select_insights"
-  ON public.video_usage_logs
-  FOR SELECT
-  TO authenticated
-  USING (
-    user_id = auth.uid()
-    OR EXISTS (
-      SELECT 1
-      FROM public.dance_library dl
-      WHERE dl.id = video_usage_logs.video_id
-        AND dl.creator_id = auth.uid()
-    )
-    OR EXISTS (
-      SELECT 1 FROM public.profiles p
-      WHERE p.id = auth.uid() AND p.role = 'admin'
-    )
-    OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
-  );
-
 -- ---------------------------------------------------------------------------
--- 2) dance_library.creator_id
+-- 2) dance_library.creator_id (before any policy references dl.creator_id)
 -- ---------------------------------------------------------------------------
 ALTER TABLE public.dance_library
   ADD COLUMN IF NOT EXISTS creator_id uuid REFERENCES public.profiles (id) ON DELETE SET NULL;
@@ -110,6 +89,27 @@ SET creator_id = (
   LIMIT 1
 )
 WHERE mr.creator_id IS NULL;
+
+-- Select: own rows, or teacher viewing logs for owned videos, or admin
+DROP POLICY IF EXISTS "video_usage_logs_select_insights" ON public.video_usage_logs;
+CREATE POLICY "video_usage_logs_select_insights"
+  ON public.video_usage_logs
+  FOR SELECT
+  TO authenticated
+  USING (
+    user_id = auth.uid()
+    OR EXISTS (
+      SELECT 1
+      FROM public.dance_library dl
+      WHERE dl.id = video_usage_logs.video_id
+        AND dl.creator_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role = 'admin'
+    )
+    OR (auth.jwt() -> 'app_metadata' ->> 'role') = 'admin'
+  );
 
 -- ---------------------------------------------------------------------------
 -- 4) dance_library RLS — The Teacher's Room

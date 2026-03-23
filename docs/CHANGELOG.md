@@ -4,6 +4,13 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## profiles RLS infinite recursion fix (2025-03-17)
+
+- **Error:** `infinite recursion detected in policy for relation "profiles"` when updating/selecting `profiles` (e.g. Welcome Kit `completeWelcomeKit`).
+- **Cause:** `profiles_select_own` / `profiles_update_own` used `EXISTS (SELECT 1 FROM public.profiles …)` for the admin branch, which re-evaluated RLS on the same table.
+- **Fix:** Migration `20250324000024_profiles_rls_fix_recursion.sql` — `current_user_is_profiles_admin()` **SECURITY DEFINER** helper + policies call it instead of subquerying `profiles` inline.
+- **Apply:** `supabase db push` or run the migration SQL in the Supabase SQL Editor on production.
+
 ## Welcome Kit “Begin Initial Assessment” no-op (2025-03-17)
 
 - **Cause:** `completeWelcomeKit()` could fail (DB/RLS, missing columns, upsert quirks) while the UI only navigated on `success` — **no error feedback**, so the button looked broken.
