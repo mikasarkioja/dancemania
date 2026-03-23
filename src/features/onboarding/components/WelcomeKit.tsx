@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Video, Brain, Award, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { completeWelcomeKit } from "@/features/user/actions/welcome-kit-actions";
 
 const SLIDES = [
@@ -59,17 +60,38 @@ export function WelcomeKit({ onComplete }: WelcomeKitProps) {
   const router = useRouter();
   const [slideIndex, setSlideIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const slide = SLIDES[slideIndex];
   const isLast = slideIndex === SLIDES.length - 1;
 
   const handleEnterStudio = async () => {
+    setActionError(null);
     setLoading(true);
-    const { success } = await completeWelcomeKit();
-    setLoading(false);
-    if (success) {
-      onComplete?.();
-      router.push("/onboarding");
+    try {
+      const result = await completeWelcomeKit();
+      if (result.success) {
+        onComplete?.();
+        router.push("/onboarding");
+        router.refresh();
+        return;
+      }
+      const msg =
+        result.error ??
+        "Could not save your choice. Check your connection and try again.";
+      setActionError(msg);
+      toast.error(msg, {
+        description:
+          "If this keeps happening, your database may need the latest migrations (profiles.has_seen_welcome_kit).",
+        duration: 8000,
+      });
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Something went wrong. Try again.";
+      setActionError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -123,7 +145,10 @@ export function WelcomeKit({ onComplete }: WelcomeKitProps) {
               >
                 <motion.div
                   className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border-2 border-[hsl(346,77%,50%)]/50 bg-[hsl(346,77%,50%)]/10"
-                  style={{ willChange: "transform", transform: "translateZ(0)" }}
+                  style={{
+                    willChange: "transform",
+                    transform: "translateZ(0)",
+                  }}
                   animate={{
                     boxShadow: [
                       "0 0 0 0 rgba(253, 164, 175, 0.4)",
@@ -214,6 +239,14 @@ export function WelcomeKit({ onComplete }: WelcomeKitProps) {
           </AnimatePresence>
 
           <div className="mt-8 flex flex-col gap-3">
+            {actionError && (
+              <p
+                role="alert"
+                className="rounded-xl border border-destructive/40 bg-destructive/10 px-3 py-2 text-center text-sm text-destructive"
+              >
+                {actionError}
+              </p>
+            )}
             <Button
               className="min-h-[48px] w-full touch-manipulation rounded-full bg-[hsl(346,77%,50%)] px-6 py-3 text-white shadow-lg shadow-[hsl(346,77%,50%)]/25 hover:opacity-90"
               onClick={handleNext}

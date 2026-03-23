@@ -4,6 +4,19 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Welcome Kit “Begin Initial Assessment” no-op (2025-03-17)
+
+- **Cause:** `completeWelcomeKit()` could fail (DB/RLS, missing columns, upsert quirks) while the UI only navigated on `success` — **no error feedback**, so the button looked broken.
+- **Fix:** `welcome-kit-actions` uses **UPDATE** when a `profiles` row exists, else **INSERT**; **WelcomeKit** shows Sonner toast + inline alert on failure and calls `router.refresh()` after success.
+
+## Email OTP login — Supabase template fix (2025-03-17)
+
+- **Cause:** Default Supabase **Magic link** emails use `{{ .ConfirmationURL }}` only, so users get a link but no OTP; the app verifies with `verifyOtp({ type: 'email' })`.
+- **Length:** Login UI uses `LOGIN_EMAIL_OTP_LENGTH` in `src/lib/auth/otp-config.ts` (default **6**); must match Supabase `[auth.email] otp_length` locally; hosted projects may differ — see `docs/SUPABASE_EMAIL_OTP_SETUP.md`.
+- **Docs:** `docs/SUPABASE_EMAIL_OTP_SETUP.md` — Dashboard steps to add `{{ .Token }}`.
+- **Templates:** `supabase/templates/magic_link.html` and `confirm_signup.html` (copy into Supabase Email Templates or wire via `config.toml` locally).
+- **UI:** Login code step explains “only see a link?” and points to repo paths; `sendLoginOtp` documents that `emailRedirectTo` must stay omitted.
+
 ## Admin Master Console & operator data (2025-03-17)
 
 - **`/admin` (overview only):** Server-side admin gate (`redirect` if not admin). **Studio Pulse** stat bar (dancers, teachers, practices, avg precision), **Sentinel** cookie diagnostic widget, **Teacher performance** + **top practiced videos**, **user directory** (search, pagination, role edit, Bloom badge, join date from `created_at`), boutique sidebar + charcoal shell on the overview page only (sub-routes keep default theme).

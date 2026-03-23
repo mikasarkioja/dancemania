@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { sendLoginOtp, verifyLoginOtp } from "@/features/auth";
+import { LOGIN_EMAIL_OTP_LENGTH } from "@/lib/auth/otp-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const OTP_LENGTH = 6;
+const OTP_LENGTH = LOGIN_EMAIL_OTP_LENGTH;
 const RESEND_COOLDOWN_SEC = 60;
 
 export function LoginForm() {
@@ -229,11 +230,34 @@ export function LoginForm() {
               className="mt-6 space-y-6"
             >
               <p className="text-sm text-muted-foreground">
-                We sent a 6-digit code to{" "}
-                <strong className="text-foreground">{email}</strong>. Enter it
-                below.
+                We sent a sign-in email to{" "}
+                <strong className="text-foreground">{email}</strong>. Enter the
+                <strong className="text-foreground">
+                  {" "}
+                  {OTP_LENGTH}-digit code
+                </strong>{" "}
+                from that message below.
               </p>
-              <div className="flex justify-center gap-2">
+              <p className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  Only see a link?
+                </span>{" "}
+                Your Supabase project must include{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  {"{{ .Token }}"}
+                </code>{" "}
+                in the <strong>Magic link</strong> email template. Copy the HTML
+                from{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  supabase/templates/magic_link.html
+                </code>{" "}
+                — full steps in{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  docs/SUPABASE_EMAIL_OTP_SETUP.md
+                </code>
+                .
+              </p>
+              <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
                 {code.map((digit, i) => (
                   <input
                     key={i}
@@ -247,7 +271,7 @@ export function LoginForm() {
                     onChange={(e) => setCodeDigit(i, e.target.value)}
                     onKeyDown={(e) => handleCodeKeyDown(i, e)}
                     onPaste={i === 0 ? handleCodePaste : undefined}
-                    className="h-12 w-11 rounded-xl border border-brand-rose/50 bg-white/90 text-center text-lg font-semibold text-foreground shadow-sm focus:border-brand-rose focus:outline-none focus:ring-2 focus:ring-brand-rose/30"
+                    className="h-11 w-9 rounded-lg border border-brand-rose/50 bg-white/90 text-center text-base font-semibold text-foreground shadow-sm focus:border-brand-rose focus:outline-none focus:ring-2 focus:ring-brand-rose/30 sm:h-12 sm:w-10 sm:rounded-xl sm:text-lg"
                     disabled={verifyLoading}
                     aria-label={`Digit ${i + 1}`}
                   />

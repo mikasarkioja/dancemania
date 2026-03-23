@@ -57,15 +57,38 @@ export async function completeWelcomeKit(): Promise<{
     return { success: false, error: "Not authenticated." };
   }
 
-  const { error } = await supabase.from("profiles").upsert(
-    {
-      id: user.id,
-      privacy_consent_granted: true,
-      has_seen_welcome_kit: true,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "id" }
-  );
+  const payload = {
+    privacy_consent_granted: true,
+    has_seen_welcome_kit: true,
+    updated_at: new Date().toISOString(),
+  };
 
-  return { success: !error, error: error?.message };
+  // Prefer UPDATE when a row exists — avoids PostgREST upsert edge cases with RLS.
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("profiles")
+    .update(payload)
+    .eq("id", user.id)
+    .select("id");
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  if (updatedRows && updatedRows.length > 0) {
+    return { success: true };
+  }
+
+  const { error: insertError } = await supabase.from("profiles").insert({
+    id: user.id,
+    ...payload,
+  });
+
+  if (insertError) {
+    return {
+      success: false,
+      error: insertError.message,
+    };
+  }
+
+  return { success: true };
 }

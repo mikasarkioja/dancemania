@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <body style="font-family: Georgia, 'Times New Roman', serif; line-height: 1.5; color: #1a1a1c;">
+    <h2 style="margin-bottom: 0.5rem;">Confirm your email</h2>
+    <p style="margin: 0 0 1rem; color: #444;">Welcome to DanceAI. Enter this code on the login page to confirm <strong>{{ .Email }}</strong> (length matches your Supabase OTP setting):</p>
+    <p style="font-size: 2rem; font-weight: bold; letter-spacing: 0.35em; margin: 1rem 0; color: #be123c;">
+      {{ .Token }}
+    </p>
+    <p style="font-size: 0.875rem; color: #666;">This code expires in 24 hours.</p>
+    <hr style="border: none; border-top: 1px solid #e5e5e5; margin: 1.5rem 0;" />
+    <p style="font-size: 0.8125rem; color: #888;">
+      Or confirm with one click:
+      <a href="{{ .ConfirmationURL }}" style="color: #be123c;">Confirm email</a>
+    </p>
+  </body>
+</html>
