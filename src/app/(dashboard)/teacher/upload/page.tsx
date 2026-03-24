@@ -1,26 +1,31 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { isServerTeacherOrAdmin } from "@/lib/supabase/roles";
 import { TeacherStudioUploadForm } from "@/features/teacher/components/TeacherStudioUploadForm";
 import { TeacherRecentUploads } from "@/features/teacher/components/TeacherRecentUploads";
 
 export default async function TeacherUploadPage() {
+  const allowed = await isServerTeacherOrAdmin();
+  if (!allowed) redirect("/ops-access?next=/teacher/upload");
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
-
-  const allowed = await isServerTeacherOrAdmin();
-  if (!allowed) redirect("/dashboard");
-
-  const { data: recent, error } = await supabase
+  const db = user ? supabase : createServiceRoleClient();
+  let query = db
     .from("dance_library")
     .select("id, title, status, created_at, updated_at")
-    .eq("creator_id", user.id)
     .order("created_at", { ascending: false })
     .limit(25);
+
+  if (user) {
+    query = query.eq("creator_id", user.id);
+  }
+
+  const { data: recent, error } = await query;
 
   if (error) {
     return (
@@ -56,7 +61,9 @@ export default async function TeacherUploadPage() {
 
         <div className="space-y-10">
           <TeacherStudioUploadForm />
-          <TeacherRecentUploads userId={user.id} initialRows={recent ?? []} />
+          {user && (
+            <TeacherRecentUploads userId={user.id} initialRows={recent ?? []} />
+          )}
         </div>
       </div>
     </main>

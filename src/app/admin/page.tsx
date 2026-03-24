@@ -49,7 +49,7 @@ const PIPELINE_STEPS = [
 export default async function AdminPage() {
   const ok = await isServerAdmin();
   if (!ok) {
-    redirect("/dashboard");
+    redirect("/ops-access?next=/admin");
   }
 
   const bundle = await fetchAdminDashboardData();

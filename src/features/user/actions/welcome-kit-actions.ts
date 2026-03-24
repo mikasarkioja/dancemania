@@ -11,6 +11,54 @@ export interface WelcomeKitStatus {
   shouldShow: boolean;
 }
 
+async function saveWelcomeKitState(payload: {
+  has_seen_welcome_kit: boolean;
+  privacy_consent_granted?: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, error: "Not authenticated." };
+  }
+
+  const writePayload = {
+    ...payload,
+    updated_at: new Date().toISOString(),
+  };
+
+  // Prefer UPDATE when a row exists — avoids PostgREST upsert edge cases with RLS.
+  const { data: updatedRows, error: updateError } = await supabase
+    .from("profiles")
+    .update(writePayload)
+    .eq("id", user.id)
+    .select("id");
+
+  if (updateError) {
+    return { success: false, error: updateError.message };
+  }
+
+  if (updatedRows && updatedRows.length > 0) {
+    return { success: true };
+  }
+
+  const { error: insertError } = await supabase.from("profiles").insert({
+    id: user.id,
+    ...writePayload,
+  });
+
+  if (insertError) {
+    return {
+      success: false,
+      error: insertError.message,
+    };
+  }
+
+  return { success: true };
+}
+
 /**
  * Whether to show the Welcome Kit overlay.
  * Skip if user is Admin or Teacher, or has already seen the kit.
@@ -48,47 +96,21 @@ export async function completeWelcomeKit(): Promise<{
   success: boolean;
   error?: string;
 }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return { success: false, error: "Not authenticated." };
-  }
-
-  const payload = {
+  return saveWelcomeKitState({
     privacy_consent_granted: true,
     has_seen_welcome_kit: true,
-    updated_at: new Date().toISOString(),
-  };
-
-  // Prefer UPDATE when a row exists — avoids PostgREST upsert edge cases with RLS.
-  const { data: updatedRows, error: updateError } = await supabase
-    .from("profiles")
-    .update(payload)
-    .eq("id", user.id)
-    .select("id");
-
-  if (updateError) {
-    return { success: false, error: updateError.message };
-  }
-
-  if (updatedRows && updatedRows.length > 0) {
-    return { success: true };
-  }
-
-  const { error: insertError } = await supabase.from("profiles").insert({
-    id: user.id,
-    ...payload,
   });
+}
 
-  if (insertError) {
-    return {
-      success: false,
-      error: insertError.message,
-    };
-  }
-
-  return { success: true };
+/**
+ * Dismiss Welcome Kit without forcing the initial assessment.
+ * Marks the overlay as seen so it doesn't block dashboard usage.
+ */
+export async function dismissWelcomeKit(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  return saveWelcomeKitState({
+    has_seen_welcome_kit: true,
+  });
 }

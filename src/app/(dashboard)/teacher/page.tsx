@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { isServerTeacherOrAdmin, isServerAdmin } from "@/lib/supabase/roles";
 import {
   TeacherInsightsGrid,
@@ -8,23 +9,22 @@ import {
 } from "./TeacherInsightsGrid";
 
 export default async function TeacherDashboardPage() {
+  const allowed = await isServerTeacherOrAdmin();
+  if (!allowed) redirect("/ops-access?next=/teacher");
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const admin = user ? await isServerAdmin() : true;
+  const db = user ? supabase : createServiceRoleClient();
 
-  const allowed = await isServerTeacherOrAdmin();
-  if (!allowed) redirect("/dashboard");
-
-  const admin = await isServerAdmin();
-
-  let vQuery = supabase
+  let vQuery = db
     .from("dance_library")
     .select("id, title, slug, status, created_at")
     .order("created_at", { ascending: false });
 
-  if (!admin) {
+  if (!admin && user) {
     vQuery = vQuery.eq("creator_id", user.id);
   }
 
@@ -43,7 +43,7 @@ export default async function TeacherDashboardPage() {
   type LogRow = { video_id: string; action_type: string };
   let logs: LogRow[] = [];
   if (ids.length > 0) {
-    const { data: logRows } = await supabase
+    const { data: logRows } = await db
       .from("video_usage_logs")
       .select("video_id, action_type")
       .in("video_id", ids);

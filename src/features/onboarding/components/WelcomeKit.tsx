@@ -6,7 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Sparkles, Video, Brain, Award, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { completeWelcomeKit } from "@/features/user/actions/welcome-kit-actions";
+import {
+  completeWelcomeKit,
+  dismissWelcomeKit,
+} from "@/features/user/actions/welcome-kit-actions";
 
 const SLIDES = [
   {
@@ -64,6 +67,31 @@ export function WelcomeKit({ onComplete }: WelcomeKitProps) {
 
   const slide = SLIDES[slideIndex];
   const isLast = slideIndex === SLIDES.length - 1;
+
+  const handleSkipForNow = async () => {
+    setActionError(null);
+    setLoading(true);
+    try {
+      const result = await dismissWelcomeKit();
+      if (result.success) {
+        onComplete?.();
+        router.refresh();
+        return;
+      }
+      const msg =
+        result.error ??
+        "Could not save your choice. Check your connection and try again.";
+      setActionError(msg);
+      toast.error(msg);
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Something went wrong. Try again.";
+      setActionError(msg);
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEnterStudio = async () => {
     setActionError(null);
@@ -270,6 +298,16 @@ export function WelcomeKit({ onComplete }: WelcomeKitProps) {
                 className="min-h-[44px] text-sm text-muted-foreground touch-manipulation hover:text-foreground"
               >
                 Skip to privacy
+              </button>
+            )}
+            {isLast && (
+              <button
+                type="button"
+                onClick={handleSkipForNow}
+                disabled={loading}
+                className="min-h-[44px] text-sm text-muted-foreground touch-manipulation hover:text-foreground disabled:opacity-50"
+              >
+                Skip for now
               </button>
             )}
           </div>

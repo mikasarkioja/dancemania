@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { hasOperatorPasswordAccess } from "@/lib/auth/operator-access";
 
 export type UserRole = "student" | "teacher" | "admin";
 
@@ -33,6 +34,7 @@ export const getServerRole = cache(async (): Promise<UserRole | null> => {
  * Checks profiles.role first; falls back to app_metadata.role for existing Supabase-set admins.
  */
 export async function isServerAdmin(): Promise<boolean> {
+  if (await hasOperatorPasswordAccess()) return true;
   const role = await getServerRole();
   if (role === "admin") return true;
   const supabase = await createClient();
@@ -44,6 +46,7 @@ export async function isServerAdmin(): Promise<boolean> {
 
 /** True if profiles.role or JWT indicates teacher or admin. */
 export async function isServerTeacherOrAdmin(): Promise<boolean> {
+  if (await hasOperatorPasswordAccess()) return true;
   const role = await getServerRole();
   if (role === "teacher" || role === "admin") return true;
   const supabase = await createClient();

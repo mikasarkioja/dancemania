@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
+import { hasOperatorPasswordAccess } from "@/lib/auth/operator-access";
 import { getServerRole } from "@/lib/supabase/roles";
 import { runProcessDanceVideoForRow } from "@/lib/extraction/run-process-dance-video";
 
@@ -20,12 +22,14 @@ export async function POST(request: Request) {
     const { rowId, videoUrl: bodyVideoUrl } = body;
 
     const supabase = await createClient();
+    const operatorAccess = await hasOperatorPasswordAccess();
     const {
       data: { user },
     } = await supabase.auth.getUser();
     const jwtRole = (user?.app_metadata?.role as string) ?? "";
-    const role = await getServerRole();
+    const role = user ? await getServerRole() : null;
     const allowed =
+      operatorAccess ||
       role === "admin" ||
       role === "teacher" ||
       jwtRole === "admin" ||
@@ -41,9 +45,10 @@ export async function POST(request: Request) {
       );
     }
     let targetId: string;
+    const db = operatorAccess && !user ? createServiceRoleClient() : supabase;
 
     if (rowId) {
-      const { data: row, error: fetchError } = await supabase
+      const { data: row, error: fetchError } = await db
         .from("dance_library")
         .select("id")
         .eq("id", rowId)
@@ -56,7 +61,7 @@ export async function POST(request: Request) {
       }
       targetId = row.id;
     } else if (bodyVideoUrl) {
-      const { data: row, error: fetchError } = await supabase
+      const { data: row, error: fetchError } = await db
         .from("dance_library")
         .select("id")
         .eq("video_url", bodyVideoUrl)

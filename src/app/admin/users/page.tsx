@@ -7,7 +7,7 @@ import { fetchAdminDashboardData } from "@/features/admin/data/admin-dashboard";
 export default async function AdminUsersPage() {
   const ok = await isServerAdmin();
   if (!ok) {
-    redirect("/dashboard");
+    redirect("/ops-access?next=/admin/users");
   }
 
   const { directoryUsers } = await fetchAdminDashboardData();

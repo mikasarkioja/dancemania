@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { hasOperatorPasswordAccess } from "@/lib/auth/operator-access";
 import { isServerAdmin } from "@/lib/supabase/roles";
 
 export type UserRole = "student" | "teacher" | "admin";
@@ -16,7 +17,7 @@ export async function updateUserRole(
   userId: string,
   role: UserRole
 ): Promise<UpdateUserRoleResult> {
-  const ok = await isServerAdmin();
+  const ok = (await hasOperatorPasswordAccess()) || (await isServerAdmin());
   if (!ok) return { success: false, error: "Forbidden." };
 
   const supabase = await createClient();

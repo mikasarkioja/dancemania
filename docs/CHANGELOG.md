@@ -4,6 +4,13 @@ Summary of notable changes to the DanceAI (Boutique Studio) app.
 
 ---
 
+## Temporary operator password gate for admin/teacher tools (2025-03-17)
+
+- Added `ADMIN_TOOLS_PASSWORD`-based unlock flow at `/ops-access` (cookie gate) so admin/teacher tools can be used without normal role login during temporary operations.
+- `isServerAdmin` / `isServerTeacherOrAdmin` now accept operator cookie access.
+- Teacher upload and process endpoints support operator mode with service-role fallback when no authenticated user is present.
+- Student login flow remains unchanged.
+
 ## profiles RLS infinite recursion fix (2025-03-17)
 
 - **Error:** `infinite recursion detected in policy for relation "profiles"` when updating/selecting `profiles` (e.g. Welcome Kit `completeWelcomeKit`).

@@ -2,7 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { getServerRole } from "@/lib/supabase/roles";
+import { hasOperatorPasswordAccess } from "@/lib/auth/operator-access";
 import { runProcessDanceVideoForRow } from "@/lib/extraction/run-process-dance-video";
 import { insertNotificationForAllAdmins } from "@/lib/notifications/insert-notification";
 
@@ -49,15 +51,18 @@ export async function processTeacherUpload(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
+  const operatorAccess = await hasOperatorPasswordAccess();
+  if (!user && !operatorAccess) {
     return { ok: false, error: "Sign in required." };
   }
 
-  const profileRole = await getServerRole();
-  const jwtRole = (user.app_metadata?.role as string) ?? "";
-  if (!isTeacherOrAdminRole(profileRole, jwtRole)) {
+  const profileRole = user ? await getServerRole() : null;
+  const jwtRole = (user?.app_metadata?.role as string) ?? "";
+  if (!operatorAccess && !isTeacherOrAdminRole(profileRole, jwtRole)) {
     return { ok: false, error: "Only teachers or admins can upload here." };
   }
+
+  const db = user ? supabase : createServiceRoleClient();
 
   const file = formData.get("video") as File | null;
   const title = String(formData.get("title") ?? "").trim();
@@ -84,10 +89,10 @@ export async function processTeacherUpload(
     return { ok: false, error: "Only .mp4 and .mov are supported." };
   }
 
-  const objectPath = `${user.id}/${crypto.randomUUID()}.${ext}`;
+  const objectPath = `${user?.id ?? "operator"}/${crypto.randomUUID()}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const { error: upErr } = await supabase.storage
+  const { error: upErr } = await db.storage
     .from("teacher-uploads")
     .upload(objectPath, buffer, {
       contentType:
@@ -100,13 +105,11 @@ export async function processTeacherUpload(
   }
 
   const baseSlug = slugify(title);
+  const actorTag = (user?.id ?? "operator").slice(0, 8);
   const finalSlug =
-    `t-${user.id.slice(0, 8)}-${baseSlug}-${Date.now().toString(36)}`.slice(
-      0,
-      120
-    );
+    `t-${actorTag}-${baseSlug}-${Date.now().toString(36)}`.slice(0, 120);
 
-  const { data: insertRow, error: insertError } = await supabase
+  const { data: insertRow, error: insertError } = await db
     .from("dance_library")
     .insert({
       slug: finalSlug,
@@ -121,14 +124,13 @@ export async function processTeacherUpload(
       tracking_seeds: null,
       status: "processing",
       description: desc || null,
-      uploaded_by: user.id,
-      creator_id: user.id,
+      ...(user?.id ? { uploaded_by: user.id, creator_id: user.id } : {}),
     })
     .select("id")
     .single();
 
   if (insertError || !insertRow) {
-    await supabase.storage.from("teacher-uploads").remove([objectPath]);
+    await db.storage.from("teacher-uploads").remove([objectPath]);
     return {
       ok: false,
       error: insertError?.message ?? "Could not create library row.",
@@ -160,15 +162,17 @@ export async function submitTeacherVideoForApproval(
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) {
+  const operatorAccess = await hasOperatorPasswordAccess();
+  if (!user && !operatorAccess) {
     return { ok: false, error: "Sign in required." };
   }
 
-  const role = await getServerRole();
-  const jwtRole = (user.app_metadata?.role as string) ?? "";
-  const isAdmin = role === "admin" || jwtRole === "admin";
+  const db = user ? supabase : createServiceRoleClient();
+  const role = user ? await getServerRole() : null;
+  const jwtRole = (user?.app_metadata?.role as string) ?? "";
+  const isAdmin = operatorAccess || role === "admin" || jwtRole === "admin";
 
-  const { data: row, error } = await supabase
+  const { data: row, error } = await db
     .from("dance_library")
     .select("id, creator_id, status, instructions, title")
     .eq("id", videoId)
@@ -178,7 +182,7 @@ export async function submitTeacherVideoForApproval(
     return { ok: false, error: "Video not found." };
   }
 
-  if (row.creator_id !== user.id && !isAdmin) {
+  if (user && row.creator_id !== user.id && !isAdmin) {
     return { ok: false, error: "You can only submit your own uploads." };
   }
 
@@ -198,7 +202,7 @@ export async function submitTeacherVideoForApproval(
     };
   }
 
-  const { error: uErr } = await supabase
+  const { error: uErr } = await db
     .from("dance_library")
     .update({
       status: "pending_admin_approval",

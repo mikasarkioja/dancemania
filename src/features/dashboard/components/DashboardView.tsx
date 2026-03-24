@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Settings, Sparkles, Flower2, ChevronRight } from "lucide-react";
 import {
@@ -127,12 +128,15 @@ export function DashboardView({
   shouldShowWelcomeKit = false,
   practiceEntitlement = null,
 }: DashboardViewProps) {
+  const [showWelcomeKit, setShowWelcomeKit] = useState(shouldShowWelcomeKit);
   const showEmptyState =
     omatase === 0 && recentActivityWithInsight.length === 0;
 
   return (
     <main className="dark min-h-svh bg-[#1a1a1c] pt-safe pb-safe">
-      {shouldShowWelcomeKit && <WelcomeKit />}
+      {showWelcomeKit && (
+        <WelcomeKit onComplete={() => setShowWelcomeKit(false)} />
+      )}
       <div className="container mx-auto max-w-2xl px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pt-8">
         <motion.div
           variants={container}
